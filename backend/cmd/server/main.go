@@ -66,17 +66,28 @@ func main() {
 		"refresh_expiration": cfg.JWT.RefreshExpiration.String(),
 	})
 
+	// Initialize Token Service (Valkey-based)
+	var tokenService *auth.TokenService
+	if redisCache != nil {
+		tokenService = auth.NewTokenService(redisCache, cfg.JWT.Expiration, cfg.JWT.RefreshExpiration)
+		logger.Info("Token Service initialized with Valkey", nil)
+	} else {
+		logger.Warn("Token Service not initialized (Valkey unavailable)", nil)
+	}
+
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db.DB)
 	charRepo := repository.NewCharacterRepository(db.DB)
 	summonRepo := repository.NewSummonRepository(db.DB)
+	dungeonRepo := repository.NewDungeonRepository(db.DB)
 	logger.Info("Repositories initialized", nil)
 
 	// Initialize use cases
-	authUC := usecase.NewAuthUseCase(userRepo, jwtAuth)
+	authUC := usecase.NewAuthUseCase(userRepo, jwtAuth, tokenService)
 	userUC := usecase.NewUserUseCase(userRepo)
 	charUC := usecase.NewCharacterUseCase(charRepo, userRepo)
 	summonUC := usecase.NewSummonUseCase(userRepo, charRepo, summonRepo)
+	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo)
 	logger.Info("Use cases initialized", nil)
 
 	// Initialize WebSocket Hub
@@ -89,16 +100,19 @@ func main() {
 	userHandler := handler.NewUserHandler(userUC)
 	charHandler := handler.NewCharacterHandler(charUC)
 	summonHandler := handler.NewSummonHandler(summonUC)
+	dungeonHandler := handler.NewDungeonHandler(dungeonUC)
 	wsHandler := handler.NewWebSocketHandler(wsHub)
 	logger.Info("Handlers initialized", nil)
 
 	// Initialize router
 	router := handler.NewRouter(
 		jwtAuth,
+		tokenService,
 		authHandler,
 		userHandler,
 		charHandler,
 		summonHandler,
+		dungeonHandler,
 		wsHandler,
 	)
 	logger.Info("Router initialized", nil)

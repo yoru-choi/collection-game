@@ -217,10 +217,15 @@ export class GameDataStore {
       updatedAt: new Date().toISOString(),
     };
 
-    // Initialize WebSocket connection
-    const { wsClient } = require('@/services/api/WebSocketClient');
-    if (!wsClient.isConnected()) {
-      wsClient.connect();
+    // Initialize WebSocket connection (optional for development)
+    try {
+      const { wsClient } = require('@/services/api/WebSocketClient');
+      if (!wsClient.isConnected()) {
+        // Don't block on WebSocket connection in development
+        setTimeout(() => wsClient.connect(), 1000);
+      }
+    } catch (error) {
+      console.warn('WebSocket initialization skipped:', error);
     }
 
     this.saveToStorage();

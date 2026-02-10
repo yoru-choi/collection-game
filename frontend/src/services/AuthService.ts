@@ -15,9 +15,12 @@ export class AuthService {
       );
 
       if (response.success && response.data) {
-        // Store both access and refresh tokens
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
+        // Access Token\uc740 \uba54\ubaa8\ub9ac\uc5d0\ub9cc \uc800\uc7a5, Refresh Token\uc740 HttpOnly Cookie\ub85c \uc11c\ubc84\uac00 \uad00\ub9ac
+        httpClient.setAccessToken(response.data.authToken);
+        
+        // \uc790\ub3d9 \ud1a0\ud070 \uac31\uc2e0 \ud0c0\uc774\uba38 \uc2dc\uc791
+        this.startTokenRefreshTimer();
+        
         return response.data;
       } else {
         throw new Error(response.error || 'Login failed');
@@ -40,9 +43,9 @@ export class AuthService {
       );
 
       if (response.success && response.data) {
-        // Store both tokens
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
+        // Access Token \uba54\ubaa8\ub9ac \uc800\uc7a5
+        httpClient.setAccessToken(response.data.authToken);
+        this.startTokenRefreshTimer();
         return response.data;
       } else {
         throw new Error(response.error || 'Registration failed');
@@ -55,28 +58,24 @@ export class AuthService {
 
   async logout(): Promise<void> {
     try {
+      // \uc11c\ubc84\uc5d0 \ub85c\uadf8\uc544\uc6c3 \uc694\uccad (\uc11c\ubc84\uac00 Refresh Token \uc0ad\uc81c & Blacklist \ucd94\uac00)
       await httpClient.post('/auth/logout');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
+      // \ud074\ub77c\uc774\uc5b8\ud2b8 Access Token \uc0ad\uc81c
+      httpClient.clearAccessToken();
+      this.stopTokenRefreshTimer();
     }
   }
 
   async refreshToken(): Promise<void> {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) throw new Error('No refresh token');
-
-      const response = await httpClient.post<ApiResponse<{ token: string; refreshToken: string }>>(
-        '/auth/refresh',
-        { refreshToken }
-      );
+      // Refresh Token\uc740 HttpOnly Cookie\ub85c \uc790\ub3d9 \uc804\uc1a1\ub428
+      const response = await httpClient.post<ApiResponse<{ authToken: string }>>('/auth/refresh', {});
 
       if (response.success && response.data) {
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
+        httpClient.setAccessToken(response.data.authToken);
       }
     } catch (error) {
       console.error('Token refresh error:', error);
@@ -85,24 +84,33 @@ export class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('authToken');
+    return httpClient.hasAccessToken();
   }
 
   getToken(): string | null {
-    return localStorage.getItem('authToken');
-  }
-
-  getRefreshToken(): string | null {
-    return localStorage.getItem('refreshToken');
+    return httpClient.getAccessToken();
   }
 
   // Auto refresh token before expiry
+  private refreshTimerId?: number;
+
   startTokenRefreshTimer(): void {
+    if (this.refreshTimerId) {
+      clearInterval(this.refreshTimerId);
+    }
+
     const { GAME_CONFIG } = require('@/utils/Constants');
-    setInterval(() => {
+    this.refreshTimerId = window.setInterval(() => {
       if (this.isAuthenticated()) {
         this.refreshToken();
       }
     }, GAME_CONFIG.TOKEN_REFRESH_INTERVAL);
+  }
+
+  stopTokenRefreshTimer(): void {
+    if (this.refreshTimerId) {
+      clearInterval(this.refreshTimerId);
+      this.refreshTimerId = undefined;
+    }
   }
 }

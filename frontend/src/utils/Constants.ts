@@ -10,6 +10,26 @@ export const GAME_CONFIG = {
   MAX_RETRIES: 3,
 };
 
+// Responsive Breakpoints (반응형 브레이크포인트)
+export const BREAKPOINTS = {
+  MOBILE: 767,      // ~ 767px: 모바일
+  TABLET: 1279,     // 768px ~ 1279px: 태블릿
+  DESKTOP: 1280,    // 1280px ~: 데스크톱
+};
+
+// Device Detection Helper
+export const getDeviceType = (): 'mobile' | 'tablet' | 'desktop' => {
+  const width = window.innerWidth;
+  if (width <= BREAKPOINTS.MOBILE) return 'mobile';
+  if (width <= BREAKPOINTS.TABLET) return 'tablet';
+  return 'desktop';
+};
+
+// Touch Support Detection
+export const isTouchDevice = (): boolean => {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
 // Scene Keys
 export const SCENE_KEYS = {
   BOOT: 'BootScene',
@@ -185,11 +205,11 @@ export const COLORS = {
   GRADE_5: 0xff8000,
   
   // Element Colors
-  FIRE: 0xff4500,
-  WATER: 0x1e90ff,
-  WIND: 0x32cd32,
-  LIGHT: 0xffd700,
-  DARK: 0x8b008b,
+  ELEMENT_FIRE: 0xff4500,
+  ELEMENT_WATER: 0x1e90ff,
+  ELEMENT_WIND: 0x32cd32,
+  ELEMENT_LIGHT: 0xffd700,
+  ELEMENT_DARK: 0x8b008b,
 };
 
 // UI Constants

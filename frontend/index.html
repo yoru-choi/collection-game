@@ -2,7 +2,9 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="캐릭터 수집형 RPG 게임 - Windows, iPad, 모바일 모두 지원" />
+    <meta name="theme-color" content="#000000" />
     <title>Collection RPG</title>
     <style>
       * {
@@ -13,6 +15,8 @@
       body {
         overflow: hidden;
         background-color: #000;
+        touch-action: manipulation; /* 모바일 터치 최적화 */
+        -webkit-tap-highlight-color: transparent; /* iOS 탭 하이라이트 제거 */
       }
       #game-container {
         display: flex;
@@ -20,6 +24,12 @@
         align-items: center;
         width: 100vw;
         height: 100vh;
+      }
+      /* 모바일 주소창 숨김 대응 */
+      @media screen and (max-width: 767px) {
+        #game-container {
+          height: 100dvh; /* Dynamic viewport height */
+        }
       }
     </style>
   </head>

@@ -281,10 +281,10 @@ export interface RegisterRequest {
 }
 
 export interface AuthResponse {
-  token: string;
-  refreshToken: string;
+  authToken: string;           // Access Token (15\ubd84, \uba54\ubaa8\ub9ac\uc5d0\ub9cc \uc800\uc7a5)
+  refreshToken?: string;       // Refresh Token (7\uc77c, HttpOnly Cookie\ub85c \uad00\ub9ac, \ud074\ub77c\uc774\uc5b8\ud2b8\ub294 \ubc18\uc9c0 \uc54a\uc74c)
   user: User;
-  expiresIn?: number;
+  expiresIn?: number;          // Access Token \ub9cc\ub8cc \uc2dc\uac04 (\ucd08)
 }
 
 export interface SummonRequest {

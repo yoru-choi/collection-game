@@ -90,3 +90,19 @@ func (h *CharacterHandler) LevelUp(w http.ResponseWriter, r *http.Request) {
 
 	utils.Success(w, map[string]string{"message": "character leveled up successfully"})
 }
+
+func (h *CharacterHandler) Awaken(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	charID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		utils.BadRequest(w, "invalid character ID")
+		return
+	}
+
+	if err := h.charUC.Awaken(r.Context(), charID); err != nil {
+		utils.BadRequest(w, err.Error())
+		return
+	}
+
+	utils.Success(w, map[string]string{"message": "character awakened successfully"})
+}

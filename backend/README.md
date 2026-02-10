@@ -1,100 +1,301 @@
 # Collection Game Backend
 
-캐릭터 수집형 RPG 게임 백엔드 서버
+캐릭터 수집형 RPG 게임 백엔드 서버 (PRD 기반 v2.0)
 
-## 기술 스택
+## ✨ 주요 기능
 
-- **언어**: Go 1.21+
-- **프레임워크**: Gin (HTTP), gRPC
-- **데이터베이스**: PostgreSQL
-- **캐싱**: Redis/Valkey
-- **인증**: JWT
+### 🐳 Docker 기반 인프라
+- **완벽한 컨테이너화**: Docker Compose로 전체 스택 실행
+- **PostgreSQL**: 게임 데이터 저장
+- **Valkey (Redis)**: JWT 토큰 관리, 캐싱, 세션 관리
+- **Nginx**: 리버스 프록시 & 로드 밸런싱 & Rate Limiting
+- **Dozzle**: 실시간 로그 모니터링 웹 UI
 
-## 프로젝트 구조
+### 🔧 백엔드 기능
+- ✅ **API Versioning** (`/api/v1/`)
+- ✅ **JWT 인증** (Valkey 기반 토큰 관리)
+  - Access Token (15분) + Refresh Token (7일)
+  - Token Blacklist (로그아웃 지원)
+  - Token Rotation (보안 강화)
+  - Concurrent Login 추적
+- ✅ **Rate Limiting** (100 req/min)
+- ✅ **WebSocket** 실시간 통신
+- ✅ **구조화된 JSON 로깅**
+- ✅ **bcrypt** (cost 12) 패스워드 암호화
+- ✅ **Clean Architecture**
+
+### 🎮 게임 기능
+- ✅ 유저 인증 시스템
+- ✅ 캐릭터 시스템 (20종)
+- ✅ 가챠 시스템 (일반/프리미엄)
+- ✅ 캐릭터 레벨업
+- ✅ 화폐 시스템 (크리스탈, 골드)
+- ✅ 에너지 시스템 (자동 회복)
+
+## 📂 프로젝트 구조
 
 ```
-.
+backend/
 ├── cmd/
-│   └── server/          # 메인 애플리케이션
+│   └── server/              # 메인 애플리케이션 진입점
 ├── internal/
-│   ├── domain/          # 도메인 모델
-│   ├── repository/      # 데이터 액세스 레이어
-│   ├── usecase/         # 비즈니스 로직
-│   ├── handler/         # HTTP/gRPC 핸들러
-│   └── middleware/      # 미들웨어
+│   ├── domain/              # 도메인 모델 (엔티티)
+│   ├── repository/          # 데이터 액세스 레이어
+│   ├── usecase/             # 비즈니스 로직
+│   ├── handler/             # HTTP 핸들러 + WebSocket
+│   └── middleware/          # 인증, Rate Limiting, CORS
 ├── pkg/
-│   ├── auth/            # 인증 유틸리티
-│   ├── database/        # DB 연결
-│   ├── cache/           # 캐시 유틸리티
-│   └── utils/           # 공통 유틸리티
-├── config/              # 설정
-├── migrations/          # DB 마이그레이션
-└── proto/               # gRPC 프로토콜 정의
+│   ├── auth/                # JWT 토큰 생성/검증
+│   ├── database/            # PostgreSQL 연결
+│   ├── cache/               # Valkey(Redis) 연결
+│   ├── logger/              # 구조화된 JSON 로깅
+│   └── utils/               # 공통 유틸리티
+├── migrations/              # 데이터베이스 마이그레이션 SQL
+├── Dockerfile               # 멀티 스테이지 Go 빌드
+├── docker-compose.yml       # 전체 서비스 오케스트레이션
+└── nginx.conf               # Nginx 리버스 프록시 설정
+```
 
-## 시작하기
+## 🚀 빠른 시작
 
 ### 필수 요구사항
+- **Docker** 20.10+
+- **Docker Compose** 2.0+
 
-- Go 1.21 이상
-- PostgreSQL 14 이상
-- Redis/Valkey
+### 1️⃣ Docker Compose로 실행
 
-### 설치
-
-1. 저장소 클론
-2. 환경 변수 설정:
-   ```bash
-   cp .env.example .env
-   # .env 파일을 편집하여 설정
-   ```
-
-3. 의존성 설치:
-   ```bash
-   make deps
-   ```
-
-4. 데이터베이스 마이그레이션:
-   ```bash
-   make migrate-up
-   ```
-
-5. 서버 실행:
-   ```bash
-   make run
-   ```
-
-## API 엔드포인트
-
-### 인증
-- `POST /api/auth/register` - 회원가입
-- `POST /api/auth/login` - 로그인
-- `POST /api/auth/refresh` - 토큰 갱신
-
-### 유저
-- `GET /api/user/profile` - 프로필 조회
-- `PUT /api/user/profile` - 프로필 수정
-
-### 캐릭터
-- `GET /api/characters` - 보유 캐릭터 목록
-- `GET /api/characters/:id` - 캐릭터 상세
-- `POST /api/characters/:id/level-up` - 레벨업
-
-### 가챠
-- `POST /api/summon/normal` - 일반 소환
-- `POST /api/summon/premium` - 프리미엄 소환
-
-## 개발
-
-### 테스트 실행
 ```bash
-make test
+# 전체 스택 시작 (PostgreSQL, Valkey, Backend, Nginx, Dozzle)
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f backend
+
+# 또는 Dozzle 웹 UI로 로그 확인
+# 브라우저에서: http://localhost:8888
 ```
 
-### 빌드
+### 2️⃣ 로컬 개발 모드
+
 ```bash
-make build
+# 의존성 설치
+go mod download
+
+# 환경 변수 설정
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=postgres
+export DB_PASSWORD=password
+export DB_NAME=collection_game
+export VALKEY_HOST=localhost
+export VALKEY_PORT=6379
+export JWT_SECRET=your-secret-key
+
+# 서버 실행
+go run cmd/server/main.go
 ```
 
-## 라이센스
+### 3️⃣ 서비스 접근
+
+| 서비스 | URL | 용도 |
+|--------|-----|------|
+| **Backend API** | http://localhost/api/v1/* | REST API |
+| **WebSocket** | ws://localhost/ws | 실시간 통신 |
+| **Dozzle** | http://localhost:8888 | 로그 모니터링 |
+| **PostgreSQL** | localhost:5432 | 데이터베이스 |
+| **Valkey** | localhost:6379 | 캐시 |
+
+## 📖 API 문서
+
+자세한 API 문서는 [API_V1.md](API_V1.md)를 참고하세요.
+
+### 주요 엔드포인트
+
+#### 🔐 인증
+- `POST /api/v1/auth/register` - 회원가입
+- `POST /api/v1/auth/login` - 로그인
+- `POST /api/v1/auth/refresh` - 토큰 갱신
+
+#### 👤 유저
+- `GET /api/v1/user/profile` - 프로필 조회
+- `PUT /api/v1/user/profile` - 프로필 수정
+- `GET /api/v1/user/inventory` - 인벤토리 조회
+
+#### 🎭 캐릭터
+- `GET /api/v1/characters` - 보유 캐릭터 목록
+- `GET /api/v1/characters/:id` - 캐릭터 상세
+- `POST /api/v1/characters/:id/level-up` - 레벨업
+- `POST /api/v1/characters/:id/awaken` - 각성
+
+#### 🎰 가챠
+- `POST /api/v1/summon/normal` - 일반 소환 (골드 1,000)
+- `POST /api/v1/summon/premium` - 프리미엄 소환 (크리스탈 100)
+
+#### 🌐 WebSocket
+- `ws://localhost/ws` - WebSocket 연결
+- **메시지 타입**: `ping`, `pong`, `chat`, `pvp`, `notification`
+
+## 🔒 보안 기능
+
+### JWT 토큰 관리 (Valkey 기반)
+- **Access Token**: 15분 만료 (클라이언트 메모리 저장)
+- **Refresh Token**: 7일 만료 (Valkey 저장 관리)
+- **Token Blacklist**: 로그아웃 시 Valkey에 저장
+- **Token Rotation**: Refresh 시 새 토큰 발급 및 구 토큰 폐기
+- **JTI (JWT ID)**: UUID로 토큰 추적 및 무효화
+
+### 암호화 및 검증
+- **bcrypt**: Cost 12로 패스워드 해싱
+- **Prepared Statements**: SQL Injection 방지
+
+### Rate Limiting
+- **Nginx**: 100 req/min per IP
+- **Application**: 100 req/min per IP
+
+### 기타 보안
+- **CORS**: Origin 허용 제어
+- **Server-side Validation**: 모든 게임 로직 서버 검증
+
+**Valkey에 저장되는 토큰 정보:**
+```redis
+refresh_token:{user_id}:{token_id}  # TTL: 7일
+token_blacklist:{token_jti}          # TTL: 15분
+user_session:{user_id}               # TTL: 24시간
+```
+
+## 🐳 Docker 가이드
+
+자세한 Docker 사용법은 [DOCKER.md](DOCKER.md)를 참고하세요.
+
+### Docker Compose 명령어
+
+```bash
+# 전체 서비스 시작
+docker-compose up -d
+
+# 특정 서비스 재시작
+docker-compose restart backend
+
+# 로그 확인
+docker-compose logs -f backend
+
+# 전체 중지
+docker-compose down
+
+# 볼륨까지 삭제 (DB 데이터 초기화)
+docker-compose down -v
+
+# 이미지 재빌드
+docker-compose build --no-cache backend
+```
+
+### 데이터베이스 접속
+
+```bash
+docker exec -it collection-game-postgres psql -U postgres -d collection_game
+```
+
+### Valkey(Redis) CLI
+
+```bash
+docker exec -it collection-game-valkey valkey-cli
+```
+
+## 📊 모니터링
+
+### Dozzle 로그 뷰어
+- URL: http://localhost:8888
+- 실시간 컨테이너 로그 확인
+- 필터링 및 검색 기능
+
+### 구조화된 로그 형식
+```json
+{
+  "timestamp": "2024-01-20T10:30:00Z",
+  "level": "INFO",
+  "message": "Server started",
+  "data": {
+    "port": 8080
+  }
+}
+```
+
+## 🧪 테스트
+
+```bash
+# 유닛 테스트
+go test ./...
+
+# 커버리지 포함
+go test -cover ./...
+
+# API 테스트 (cURL)
+# 회원가입
+curl -X POST http://localhost/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"player1","password":"Test1234!","email":"player1@test.com"}'
+
+# 로그인
+curl -X POST http://localhost/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"player1","password":"Test1234!"}'
+
+# WebSocket 테스트 (websocat)
+websocat ws://localhost/ws
+```
+
+## 🛠️ 개발 팁
+
+### 환경 변수
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=password
+DB_NAME=collection_game
+VALKEY_HOST=localhost
+VALKEY_PORT=6379
+JWT_SECRET=your-secret-key-change-in-production
+```
+
+### 마이그레이션 생성
+```bash
+# 새 마이그레이션 파일 생성
+migrate create -ext sql -dir migrations -seq add_new_table
+```
+
+### 로컬 빌드
+```bash
+# 바이너리 빌드
+go build -o bin/server cmd/server/main.go
+
+# 실행
+./bin/server
+```
+
+## 📚 추가 문서
+
+- [API_V1.md](API_V1.md) - 완전한 API 명세서
+- [DOCKER.md](DOCKER.md) - Docker 심화 가이드
+- [PRD.md](../PRD.md) - 프로젝트 요구사항 문서
+
+## 🎯 로드맵
+
+### ✅ Phase 1 (완료)
+- Docker 인프라 구축
+- API Versioning
+- WebSocket 실시간 통신
+- Rate Limiting
+- 구조화된 로깅
+- 기본 게임 기능
+
+### 🔜 Phase 2 (예정)
+- 전투 시스템
+- 던전 시스템
+- PvP 아레나
+- 길드 시스템
+- 이벤트 시스템
+
+## 📄 라이센스
 
 Private Project

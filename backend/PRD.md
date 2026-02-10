@@ -9,21 +9,321 @@
 - **프론트엔드**: Phaser 3 (2D game engine) + TypeScript + Vite
 - **백엔드**: Go (Golang)
 - **데이터베이스**: PostgreSQL
-- **캐싱**: valkey
+- **세션 & 캐시 스토어**: Valkey (Redis 호환)
+  - JWT Refresh Token 저장 (TTL 7일)
+  - Token Blacklist 관리 (로그아웃 시)
+  - 사용자 활성 세션 관리
+  - 실시간 랭킹 및 게임 데이터 캐싱
+  - API Rate Limiting 카운터
 - **통신**: WebSocket + HTTP/REST
-- **인증**: JWT
+- **인증**: JWT (Access Token + Refresh Token)
+  - Access Token: 15분 수명, Stateless, 클라이언트 localStorage 저장
+  - Refresh Token: 7일 수명, Valkey에 저장, HttpOnly 쿠키로 전송
+  - Token Rotation & Blacklist를 통한 보안 강화
 - **컨테이너화**: Docker & Docker Compose
   - PostgreSQL 컨테이너
-  - valkey 컨테이너
+  - Valkey 컨테이너
   - 백엔드 API 서버 컨테이너
   - 프론트엔드 정적 파일 서빙 컨테이너
   - Nginx 컨테이너 (리버스 프록시 & 로드 밸런싱)
   - Dozzle 컨테이너 (실시간 로그 모니터링)
 
-### 1.3 타겟 사용자
+### 1.3 시스템 아키텍처
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Web Client                              │
+│              (Phaser 3 + TypeScript)                         │
+│            Browser / Mobile WebView                          │
+└────────────────────┬────────────────────────────────────────┘
+                     │ HTTP/HTTPS
+                     │ WebSocket
+                     ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   Nginx (Port 80)                            │
+│         - Reverse Proxy                                      │
+│         - Load Balancing                                     │
+│         - Rate Limiting (100 req/min)                        │
+│         - WebSocket Upgrade                                  │
+└────────────────────┬────────────────────────────────────────┘
+                     │ HTTP Proxy
+                     │ WebSocket Proxy
+                     ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Go Backend Server (Port 8080)                   │
+│         - REST API (/api/v1/*)                               │
+│         - WebSocket Server (/ws)                             │
+│         - JWT Authentication                                 │
+│         - Business Logic                                     │
+└──────────┬─────────────────────────┬────────────────────────┘
+           │                         │
+           │ SQL Queries             │ Cache Operations
+           ↓                         ↓
+┌──────────────────────┐   ┌──────────────────────┐
+│   PostgreSQL (5432)  │   │   Valkey (6379)      │
+│   - Game Data        │   │   - Session Cache    │
+│   - User Info        │   │   - Rankings         │
+│   - Characters       │   │   - Real-time Data   │
+└──────────────────────┘   └──────────────────────┘
+
+                     ↓
+          ┌──────────────────────┐
+          │  Dozzle (Port 8888)  │
+          │  - Log Monitoring    │
+          └──────────────────────┘
+```
+
+**통신 흐름:**
+1. **Web Client** → Nginx (HTTP/WebSocket 요청)
+2. **Nginx** → Go Backend (프록시, Rate Limiting 적용)
+3. **Go Backend** → PostgreSQL (게임 데이터 CRUD)
+4. **Go Backend** → Valkey (캐싱, 세션 관리)
+5. **Dozzle** → Docker Logs (실시간 로그 수집 및 표시)
+
+**네트워크 분리:**
+- 모든 서비스는 `game_network` (Docker Bridge Network)에서 통신
+- 외부 노출 포트: 80 (Nginx), 8888 (Dozzle)
+- 내부 포트: 8080 (Backend), 5432 (PostgreSQL), 6379 (Valkey)
+
+### 1.4 타겟 사용자
 - 수집형 RPG를 좋아하는 게이머
 - 캐릭터 육성 및 전략적 플레이를 즐기는 플레이어
 - 연령대: 18-35세
+
+### 1.5 플랫폼 지원
+- **데스크톱**: Windows, macOS, Linux (웹 브라우저)
+- **태블릿**: iPad, Android 태블릿
+- **모바일**: iPhone, Android 스마트폰
+- **반응형 디자인**: 모든 화면 크기와 해상도에 자동 대응
+- **터치 및 마우스**: 두 가지 입력 방식 모두 지원
+
+### 1.6 아트 에셋 리소스 (OpenGameArt.org)
+
+**선정 사이트: OpenGameArt.org** (https://opengameart.org/)
+
+#### 1.6.1 선정 이유
+
+OpenGameArt.org는 다음과 같은 이유로 프로젝트의 유일한 에셋 소스로 선정되었습니다:
+
+**장점:**
+- ✅ **오픈소스 커뮤니티**: 완전한 무료 게임 에셋 저장소
+- ✅ **명확한 라이선스**: CC0 (Public Domain), CC-BY 3.0/4.0, OGA-BY 3.0 등
+- ✅ **직접 URL 접근 가능**: 이미지 파일에 직접 핫링크 가능
+- ✅ **상업적 사용 허용**: 대부분의 에셋이 상업적 사용 가능 (크레딧 표기 조건)
+- ✅ **RPG 에셋 풍부**: 여성 캐릭터, 던전, UI, 타일셋 등 프로젝트에 필요한 모든 에셋
+- ✅ **활발한 커뮤니티**: 지속적인 업데이트, 검증된 품질
+
+**주요 에셋 카테고리:**
+- 2D 픽셀 아트 캐릭터 스프라이트 (16x16, 32x32, 64x64)
+- RPG 타일셋 (던전, 마을, 자연 환경)
+- UI/GUI 요소 (버튼, 패널, 아이콘)
+- 스킬 이펙트 (화염, 물, 바람, 마법)
+- 배경 음악 및 효과음 (Royalty Free)
+
+#### 1.6.2 개발 전략: 핫링크 (Hotlink) 방식
+
+**로컬 개발 환경 (핫링크 사용)**
+- OpenGameArt.org의 이미지 URL을 직접 Phaser 3 코드에서 로드
+- 에셋 다운로드 없이 즉시 개발 시작 가능
+- 빠른 프로토타이핑 및 에셋 테스트
+- 인터넷 연결 필요
+
+**프로덕션 배포 환경 (로컬 에셋 사용)**
+- 선택한 에셋을 다운로드하여 `frontend/public/assets/` 저장
+- 빌드 시 Vite가 에셋을 번들링
+- CDN 배포 가능
+- 인터넷 연결 불필요
+
+#### 1.6.3 에셋 로딩 구현 (환경별 전환)
+
+**환경 변수 설정 (.env)**
+```bash
+# .env.development (로컬 개발)
+VITE_ASSETS_MODE=hotlink
+VITE_ASSETS_BASE_URL=https://opengameart.org
+
+# .env.production (배포)
+VITE_ASSETS_MODE=local
+VITE_ASSETS_BASE_URL=/assets
+```
+
+**Phaser 3 에셋 로딩 유틸리티**
+```typescript
+// src/config/AssetConfig.ts
+export class AssetConfig {
+  private static readonly IS_HOTLINK = import.meta.env.VITE_ASSETS_MODE === 'hotlink';
+  private static readonly BASE_URL = import.meta.env.VITE_ASSETS_BASE_URL;
+
+  /**
+   * 환경에 따라 에셋 URL 반환
+   * - 개발: OpenGameArt.org 직접 링크 (핫링크)
+   * - 배포: 로컬 assets 폴더
+   */
+  static getAssetUrl(localPath: string, hotlinkUrl?: string): string {
+    if (this.IS_HOTLINK && hotlinkUrl) {
+      return hotlinkUrl;
+    }
+    return `${this.BASE_URL}/${localPath}`;
+  }
+}
+
+// src/scenes/BootScene.ts
+import { AssetConfig } from '../config/AssetConfig';
+
+export class BootScene extends Phaser.Scene {
+  preload() {
+    // 여성 전사 캐릭터 (LPC Character Base)
+    const warriorUrl = AssetConfig.getAssetUrl(
+      'characters/female/warrior/lpc_warrior.png',
+      'https://opengameart.org/sites/default/files/lpc-warrior-female.png'
+    );
+    this.load.spritesheet('warrior_female', warriorUrl, {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+
+    // 던전 타일셋
+    const dungeonUrl = AssetConfig.getAssetUrl(
+      'tilesets/dungeon/dungeon_tiles.png',
+      'https://opengameart.org/sites/default/files/dungeon-tileset-16x16.png'
+    );
+    this.load.image('dungeon_tiles', dungeonUrl);
+
+    // UI 버튼
+    const buttonUrl = AssetConfig.getAssetUrl(
+      'ui/buttons/button_normal.png',
+      'https://opengameart.org/sites/default/files/fantasy-button.png'
+    );
+    this.load.image('button_normal', buttonUrl);
+  }
+}
+```
+
+#### 1.6.4 에셋 목록 관리
+
+```typescript
+// src/game/assets/asset-list.ts
+export interface AssetInfo {
+  key: string;                    // Phaser에서 사용할 키
+  localPath: string;              // 로컬 경로 (프로덕션)
+  hotlinkUrl: string;             // OpenGameArt.org URL (개발)
+  author: string;                 // 작가 이름
+  license: string;                // 라이선스
+  sourceUrl: string;              // 출처 페이지
+  creditRequired: boolean;        // 크레딧 표기 필요 여부
+}
+
+export const ASSET_LIST: Record<string, AssetInfo> = {
+  warrior_female: {
+    key: 'warrior_female',
+    localPath: 'characters/female/warrior/lpc_warrior.png',
+    hotlinkUrl: 'https://opengameart.org/sites/default/files/lpc-warrior-female.png',
+    author: 'Redshrike, William.Thompsonj',
+    license: 'CC-BY 3.0, GPL 3.0',
+    sourceUrl: 'https://opengameart.org/content/lpc-character-bases',
+    creditRequired: true
+  },
+  dungeon_tiles: {
+    key: 'dungeon_tiles',
+    localPath: 'tilesets/dungeon/dungeon_16x16.png',
+    hotlinkUrl: 'https://opengameart.org/sites/default/files/dungeon-tileset.png',
+    author: '0x72',
+    license: 'CC0 (Public Domain)',
+    sourceUrl: 'https://opengameart.org/content/dungeon-tileset-16x16',
+    creditRequired: false
+  }
+};
+```
+
+#### 1.6.5 배포 전 에셋 다운로드
+
+**package.json 스크립트**
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run download-assets && vite build",
+    "download-assets": "node scripts/download-assets.js"
+  }
+}
+```
+
+**다운로드 스크립트 (scripts/download-assets.js)**
+```javascript
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import { ASSET_LIST } from '../src/game/assets/asset-list.ts';
+
+async function downloadFile(url, dest) {
+  const dir = path.dirname(dest);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (response) => {
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        console.log(`✓ Downloaded: ${path.basename(dest)}`);
+        resolve();
+      });
+    }).on('error', reject);
+  });
+}
+
+async function downloadAllAssets() {
+  console.log('📦 Downloading assets from OpenGameArt.org...\n');
+
+  for (const [key, asset] of Object.entries(ASSET_LIST)) {
+    const destPath = path.join('./public/assets', asset.localPath);
+    
+    if (fs.existsSync(destPath)) {
+      console.log(`⊗ Skip: ${asset.localPath}`);
+      continue;
+    }
+
+    try {
+      await downloadFile(asset.hotlinkUrl, destPath);
+    } catch (error) {
+      console.error(`✗ Failed: ${key}`, error.message);
+    }
+  }
+
+  console.log('\n✅ Complete!');
+}
+
+downloadAllAssets();
+```
+
+#### 1.6.6 추천 에셋 (여성 캐릭터 중심)
+
+**OpenGameArt.org 주요 에셋:**
+
+1. **LPC (Liberated Pixel Cup) Character Base** ⭐
+   - URL: https://opengameart.org/content/lpc-character-bases
+   - 여성 캐릭터 스프라이트 (64x64)
+   - 4방향 이동, 공격, 스킬 사용 애니메이션
+   - 라이선스: CC-BY 3.0, GPL 3.0
+
+2. **Dungeon Tileset II**
+   - URL: https://opengameart.org/content/dungeon-tileset-ii
+   - 16x16 픽셀 던전 타일셋
+   - 라이선스: CC0 (Public Domain)
+
+3. **Fantasy UI Borders**
+   - URL: https://opengameart.org/content/fantasy-ui-borders
+   - RPG 스타일 UI 요소
+   - 라이선스: CC0
+
+**검색 키워드:**
+- `LPC female character`
+- `RPG girl sprite`
+- `dungeon tileset 16x16`
+- `fantasy UI`
+- `fire spell effect`
 
 ---
 
@@ -220,11 +520,15 @@
    - 장착/해제
 
 ### 3.2 UX 원칙
-- 모바일 최적화 (터치 인터페이스)
+- **반응형 디자인**: 데스크톱(1280px+), 태블릿(768px-1279px), 모바일(~767px) 완벽 대응
+- **다중 입력 지원**: 터치 인터페이스 + 마우스/키보드
+- **적응형 레이아웃**: 화면 크기에 따라 UI 요소 자동 조정
+- **크로스 플랫폼**: Windows, iPad, iPhone, Android 모두 동일한 경험 제공
 - 빠른 네비게이션
 - 명확한 정보 전달
 - 매력적인 캐릭터 일러스트 강조
 - 부드러운 애니메이션
+- **성능 최적화**: 저사양 모바일 기기에서도 원활한 플레이
 
 ---
 
@@ -438,11 +742,57 @@
 - `created_at`, `updated_at` - 시간 기반 쿼리
 
 #### 4.1.3 아키텍처
-- Clean Architecture / Hexagonal Architecture
-- HTTP/REST API (게임 로직, 인증, 데이터 조회)
-- WebSocket (실시간 PvP, 채팅, 실시간 이벤트)
-- JWT 기반 인증
-- valkey 캐싱 (랭킹, 세션, 던전 데이터)
+
+**레이어 구조 (Clean Architecture)**
+```
+┌──────────────────────────────────────────────────┐
+│           Handler Layer                          │
+│  - HTTP Handlers (/api/v1/*)                     │
+│  - WebSocket Handler (/ws)                       │
+│  - Middleware (Auth, Rate Limit, CORS)           │
+└────────────────┬─────────────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────────────┐
+│           UseCase Layer                          │
+│  - Business Logic                                │
+│  - Game Rules Validation                         │
+│  - Orchestration                                 │
+└────────────────┬─────────────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────────────┐
+│         Repository Layer                         │
+│  - Database Access (PostgreSQL)                  │
+│  - Cache Access (Valkey)                         │
+│  - External Services                             │
+└────────────────┬─────────────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────────────┐
+│           Domain Layer                           │
+│  - Entities (User, Character, etc.)              │
+│  - Value Objects                                 │
+│  - Domain Interfaces                             │
+└──────────────────────────────────────────────────┘
+```
+
+**통신 계층:**
+- **HTTP/REST API**: 게임 로직, 인증, 데이터 CRUD (`/api/v1/*`)
+- **WebSocket**: 실시간 PvP, 채팅, 알림 (`/ws`)
+- **JWT 기반 인증**: Access Token (15분) + Refresh Token (7일, Valkey 저장)
+- **Valkey 캐싱 및 세션 관리**:
+  - JWT Refresh Token 저장 및 검증
+  - Token Blacklist (로그아웃/강제 만료)
+  - 유저 세션 관리 (동시 로그인 제어)
+  - 아레나 랭킹 (Sorted Set)
+  - 던전 임시 데이터 (전투 상태)
+  - 실시간 매칭 큐
+  - API Rate Limiting 카운터
+
+**데이터 흐름:**
+1. Client → Nginx → Handler (인증 검증)
+2. Handler → UseCase (비즈니스 로직)
+3. UseCase → Repository (DB/Cache 접근)
+4. Repository → PostgreSQL/Valkey
+5. 응답 역순으로 반환
 
 #### 4.1.4 주요 패키지 구조
 ```
@@ -505,6 +855,35 @@
 - **Socket.io-client**: WebSocket 통신
 - **Spine/DragonBones** (선택): 캐릭터 애니메이션 (고급)
 - **Howler.js**: 사운드 관리 (선택)
+
+#### 4.2.4.1 반응형 디자인 구현
+**Phaser Scale 설정**
+```typescript
+scale: {
+  mode: Phaser.Scale.FIT,
+  autoCenter: Phaser.Scale.CENTER_BOTH,
+  width: 1280,
+  height: 720,
+}
+```
+
+**플랫폼별 최적화**
+- **데스크톱 (1280px 이상)**: 전체 UI 표시, 마우스 호버 효과
+- **태블릿 (768px ~ 1279px)**: 중간 크기 UI, 터치 최적화
+- **모바일 (~ 767px)**: 간소화된 UI, 큰 터치 영역
+
+**입력 처리**
+```typescript
+// 터치와 마우스 모두 지원
+scene.input.on('pointerdown', handler);
+scene.input.on('pointerup', handler);
+```
+
+**성능 최적화**
+- 저사양 기기 자동 감지
+- 프레임율 자동 조정
+- 텍스처 품질 조정
+- 파티클 효과 제한
 
 #### 4.2.5 프로젝트 구조
 ```
@@ -575,19 +954,95 @@
 - `notification:push` - 일반 알림
 
 ### 4.3 성능 요구사항
+
+#### 4.3.1 서버 성능
 - API 응답 시간: 평균 < 200ms
 - 전투 처리: < 100ms per action
 - 동시 접속자: 10,000명 이상 지원
 - 데이터베이스 쿼리 최적화
 - CDN을 통한 정적 파일 서빙
 
+#### 4.3.2 클라이언트 성능 (반응형)
+**데스크톱 (Windows, macOS, Linux)**
+- 목표 FPS: 60fps
+- 최소 사양: Chrome 90+, Firefox 88+, Safari 14+
+- 권장 해상도: 1920x1080 이상
+
+**태블릿 (iPad, Android Tablet)**
+- 목표 FPS: 60fps (고사양), 30fps (저사양)
+- 지원 기기: iPad (5세대 이상), Android 태블릿 (2020년 이후)
+- 터치 지연 시간: < 100ms
+- 자동 품질 조정
+
+**모바일 (iPhone, Android Phone)**
+- 목표 FPS: 30fps ~ 60fps (기기별 자동 조정)
+- 지원: iOS 13+, Android 8.0+
+- 배터리 최적화: 저전력 모드 지원
+- 데이터 절약: 이미지/리소스 압축
+
+**공통 최적화**
+- 초기 로딩 시간: < 3초
+- Scene 전환 시간: < 500ms
+- 메모리 사용량: < 512MB (모바일), < 1GB (데스크톱)
+- 네트워크 대역폭: 최소 3G 이상
+
 ### 4.4 보안 요구사항
 
 #### 4.4.1 인증 및 인가
-- JWT 기반 인증 (Access Token + Refresh Token)
-- 토큰 만료 시간: Access 15분, Refresh 7일
+
+**JWT 토큰 전략 (Valkey 기반)**
+- **Access Token**: 
+  - 만료 시간: 15분
+  - 클라이언트 메모리에만 저장 (localStorage 미사용)
+  - Stateless로 서버에서 직접 검증
+  
+- **Refresh Token**: 
+  - 만료 시간: 7일
+  - Valkey에 저장 관리: `refresh_token:{user_id}:{token_id}`
+  - TTL: 7일 (자동 만료)
+  - HttpOnly Cookie로 전송 (XSS 방지)
+
+**Valkey 기반 토큰 관리**
+```redis
+# Refresh Token 저장
+SET refresh_token:{user_id}:{token_id} "{token_data}" EX 604800
+
+# Token Blacklist (로그아웃/강제 만료)
+SET token_blacklist:{token_jti} "revoked" EX 900
+
+# 동시 로그인 세션 관리 (옵션)
+SET user_session:{user_id} "{session_data}" EX 86400
+SADD user_active_sessions:{user_id} "{token_id}"
+```
+
+**인증 플로우**
+1. **로그인**:
+   - 사용자 인증 성공 → Access Token + Refresh Token 발급
+   - Refresh Token을 Valkey에 저장
+   - 클라이언트에 Access Token 반환, Refresh Token은 HttpOnly Cookie
+
+2. **API 요청**:
+   - Access Token 검증 (서명, 만료 시간)
+   - Blacklist 체크 (Valkey: `token_blacklist:{jti}`)
+   - 유효하면 요청 처리
+
+3. **토큰 갱신**:
+   - Refresh Token으로 요청
+   - Valkey에서 Refresh Token 검증
+   - 유효하면 새로운 Access Token 발급
+   - 필요 시 Refresh Token도 갱신 (Rotation)
+
+4. **로그아웃**:
+   - Access Token을 Blacklist에 추가 (Valkey)
+   - Refresh Token 삭제 (Valkey)
+   - 해당 세션 정리
+
+**보안 강화**
 - API Rate Limiting (사용자당 100 req/min)
-- CORS 설정
+- CORS 설정 (허용된 Origin만)
+- Refresh Token Rotation (재사용 공격 방지)
+- Concurrent Login 제한 (옵션: 최대 3개 기기)
+- IP 기반 이상 탐지 (급격한 IP 변경 시 재인증)
 
 #### 4.4.2 데이터 보안
 - 비밀번호 암호화 (bcrypt, cost 12)
@@ -659,6 +1114,22 @@
 - [ ] 백엔드 프로젝트 구조 구축 (Clean Architecture)
 - [ ] 프론트엔드 Phaser 3 프로젝트 초기화
 
+**아트 에셋 준비 (OpenGameArt.org 핫링크)**
+- [ ] **에셋 선정 및 목록 작성**
+  - OpenGameArt.org에서 여성 캐릭터 5종 선정 (LPC Character Base)
+  - 던전 타일셋, UI 요소, 스킬 이펙트 URL 수집
+  - `asset-list.ts` 파일에 hotlink URL 및 라이선스 정보 기록
+- [ ] **개발 환경 설정**
+  - `.env.development` 파일 생성 (VITE_ASSETS_MODE=hotlink)
+  - `AssetConfig.ts` 유틸리티 클래스 구현
+  - BootScene에 핫링크 기반 에셋 로더 구현
+- [ ] **크레딧 시스템 구현**
+  - CreditsScene 생성
+  - 에셋 출처 자동 표시 기능
+- [ ] **배포 스크립트 준비**
+  - `download-assets.js` 스크립트 작성
+  - `npm run build` 시 자동 다운로드 설정
+
 **핵심 기능**
 - [ ] 유저 인증 시스템 (JWT)
 - [ ] 캐릭터 시스템 (기본 20종)
@@ -673,6 +1144,13 @@
 - [ ] API 통합 테스트
 
 ### Phase 2: 핵심 콘텐츠 (2-3개월)
+**에셋 확장**
+- [ ] 추가 여성 캐릭터 에셋 (총 50종으로 확장)
+- [ ] 속성별 스킬 이펙트 (화, 수, 풍, 광, 암)
+- [ ] 보스 레이드 전용 배경 및 이펙트
+- [ ] 프리미엄 UI 테마
+
+**게임 콘텐츠**
 - [ ] 룬 시스템
 - [ ] 속성 던전
 - [ ] 보스 레이드

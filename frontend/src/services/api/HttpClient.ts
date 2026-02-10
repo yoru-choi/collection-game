@@ -5,22 +5,23 @@ export class HttpClient {
   private client: AxiosInstance;
   private isRefreshing: boolean = false;
   private refreshSubscribers: Array<(token: string) => void> = [];
+  private accessToken: string | null = null; // 메모리에만 저장 (PRD 4.4.1)
 
   constructor() {
     this.client = axios.create({
       baseURL: GAME_CONFIG.API_BASE_URL + '/api/v1',
       timeout: 10000,
+      withCredentials: true, // HttpOnly Cookie 지원 (Refresh Token)
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    // Request interceptor to add auth token
+    // Request interceptor to add auth token (메모리에서 가져옴)
     this.client.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+        if (this.accessToken) {
+          config.headers.Authorization = `Bearer ${this.accessToken}`;
         }
         return config;
       },
@@ -50,27 +51,25 @@ export class HttpClient {
           this.isRefreshing = true;
 
           try {
-            const refreshToken = localStorage.getItem('refreshToken');
-            if (!refreshToken) throw new Error('No refresh token');
+            // Refresh Token은 HttpOnly Cookie로 자동 전송됨 (withCredentials: true)
+            const response = await this.client.post('/auth/refresh', {});
+            const { authToken } = response.data.data;
 
-            const response = await this.client.post('/auth/refresh', { refreshToken });
-            const { token, refreshToken: newRefreshToken } = response.data.data;
+            // Access Token은 메모리에만 저장
+            this.setAccessToken(authToken);
 
-            localStorage.setItem('authToken', token);
-            localStorage.setItem('refreshToken', newRefreshToken);
-
-            this.onRefreshed(token);
+            this.onRefreshed(authToken);
             this.refreshSubscribers = [];
             this.isRefreshing = false;
 
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+            originalRequest.headers.Authorization = `Bearer ${authToken}`;
             return this.client(originalRequest);
           } catch (refreshError) {
             this.isRefreshing = false;
             this.refreshSubscribers = [];
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('refreshToken');
-            window.location.href = '/login';
+            this.clearAccessToken();
+            // 로그인 페이지로 리다이렉트 (Phaser Scene 전환)
+            window.dispatchEvent(new CustomEvent('auth:logout'));
             return Promise.reject(refreshError);
           }
         }
@@ -82,6 +81,23 @@ export class HttpClient {
 
   private onRefreshed(token: string): void {
     this.refreshSubscribers.forEach((callback) => callback(token));
+  }
+
+  // Access Token 관리 메서드 (메모리 기반)
+  public setAccessToken(token: string): void {
+    this.accessToken = token;
+  }
+
+  public getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
+  public clearAccessToken(): void {
+    this.accessToken = null;
+  }
+
+  public hasAccessToken(): boolean {
+    return this.accessToken !== null;
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {

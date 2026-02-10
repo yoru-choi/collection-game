@@ -1,13 +1,30 @@
 # API Documentation
 
-Base URL: `http://localhost:8080/api`
+## Base URLs
+- **API v1**: `http://localhost:8080/api/v1`
+- **WebSocket**: `ws://localhost:8080/ws`
+- **Health Check**: `http://localhost:8080/health`
+
+## Rate Limiting
+- **Limit**: 100 requests per minute per IP
+- **Response**: 429 Too Many Requests when exceeded
+
+## Response Format
+All API responses follow this structure:
+```json
+{
+  "success": true,
+  "data": {},
+  "timestamp": "2026-02-10T12:00:00Z"
+}
+```
 
 ## Authentication
 
 ### Register
 회원가입
 
-**Endpoint:** `POST /auth/register`
+**Endpoint:** `POST /api/v1/auth/register`
 
 **Request Body:**
 ```json
@@ -32,7 +49,7 @@ Base URL: `http://localhost:8080/api`
 ### Login
 로그인
 
-**Endpoint:** `POST /auth/login`
+**Endpoint:** `POST /api/v1/auth/login`
 
 **Request Body:**
 ```json
@@ -56,7 +73,7 @@ Base URL: `http://localhost:8080/api`
 ### Refresh Token
 토큰 갱신
 
-**Endpoint:** `POST /auth/refresh`
+**Endpoint:** `POST /api/v1/auth/refresh`
 
 **Request Body:**
 ```json
@@ -83,7 +100,7 @@ Base URL: `http://localhost:8080/api`
 ### Get Profile
 유저 프로필 조회
 
-**Endpoint:** `GET /user/profile`
+**Endpoint:** `GET /api/v1/user/profile`
 
 **Headers:**
 ```
@@ -114,7 +131,7 @@ Authorization: Bearer {access_token}
 ### Get User Characters
 보유 캐릭터 목록
 
-**Endpoint:** `GET /characters`
+**Endpoint:** `GET /api/v1/characters`
 
 **Headers:**
 ```
@@ -154,7 +171,7 @@ Authorization: Bearer {access_token}
 ### Get Character Detail
 캐릭터 상세 정보
 
-**Endpoint:** `GET /characters/:id`
+**Endpoint:** `GET /api/v1/characters/:id`
 
 **Headers:**
 ```
@@ -198,7 +215,7 @@ Authorization: Bearer {access_token}
 ### Level Up Character
 캐릭터 레벨업
 
-**Endpoint:** `POST /characters/:id/level-up`
+**Endpoint:** `POST /api/v1/characters/:id/level-up`
 
 **Headers:**
 ```
@@ -229,7 +246,7 @@ Authorization: Bearer {access_token}
 ### Normal Summon
 일반 소환 (골드 100 사용)
 
-**Endpoint:** `POST /summon/normal`
+**Endpoint:** `POST /api/v1/summon/normal`
 
 **Headers:**
 ```
@@ -262,7 +279,7 @@ Authorization: Bearer {access_token}
 ### Premium Summon
 프리미엄 소환 (크리스탈 300 사용)
 
-**Endpoint:** `POST /summon/premium`
+**Endpoint:** `POST /api/v1/summon/premium`
 
 **Headers:**
 ```
@@ -295,7 +312,7 @@ Authorization: Bearer {access_token}
 ### Get Summon Rates
 가챠 확률 조회
 
-**Endpoint:** `GET /summon/rates`
+**Endpoint:** `GET /api/v1/summon/rates`
 
 **Headers:**
 ```

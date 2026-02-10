@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -16,6 +17,7 @@ var (
 type Claims struct {
 	UserID   int64  `json:"user_id"`
 	Username string `json:"username"`
+	TokenID  string `json:"token_id"` // JTI for tracking
 	jwt.RegisteredClaims
 }
 
@@ -58,13 +60,17 @@ func (j *JWT) GenerateTokenPair(userID int64, username string) (*TokenPair, erro
 
 func (j *JWT) generateToken(userID int64, username string, expiration time.Duration) (string, error) {
 	now := time.Now()
+	tokenID := uuid.New().String()
+
 	claims := &Claims{
 		UserID:   userID,
 		Username: username,
+		TokenID:  tokenID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiration)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
+			ID:        tokenID, // JTI
 		},
 	}
 

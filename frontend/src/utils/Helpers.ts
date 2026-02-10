@@ -41,15 +41,15 @@ export function getGradeColor(grade: Grade): number {
 export function getElementColor(element: ElementType): number {
   switch (element) {
     case ElementType.FIRE:
-      return COLORS.FIRE;
+      return COLORS.ELEMENT_FIRE;
     case ElementType.WATER:
-      return COLORS.WATER;
+      return COLORS.ELEMENT_WATER;
     case ElementType.WIND:
-      return COLORS.WIND;
+      return COLORS.ELEMENT_WIND;
     case ElementType.LIGHT:
-      return COLORS.LIGHT;
+      return COLORS.ELEMENT_LIGHT;
     case ElementType.DARK:
-      return COLORS.DARK;
+      return COLORS.ELEMENT_DARK;
     default:
       return COLORS.WHITE;
   }

@@ -16,8 +16,8 @@ const (
 	UsernameKey contextKey = "username"
 )
 
-// AuthMiddleware validates JWT tokens
-func AuthMiddleware(jwt *auth.JWT) func(http.Handler) http.Handler {
+// AuthMiddleware validates JWT tokens and checks blacklist
+func AuthMiddleware(jwt *auth.JWT, tokenService *auth.TokenService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get token from Authorization header
@@ -41,6 +41,15 @@ func AuthMiddleware(jwt *auth.JWT) func(http.Handler) http.Handler {
 			if err != nil {
 				utils.Unauthorized(w, "invalid or expired token")
 				return
+			}
+
+			// Check if token is blacklisted (logged out)
+			if tokenService != nil {
+				blacklisted, err := tokenService.IsTokenBlacklisted(r.Context(), claims.TokenID)
+				if err == nil && blacklisted {
+					utils.Unauthorized(w, "token has been revoked")
+					return
+				}
 			}
 
 			// Add user info to context

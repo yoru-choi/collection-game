@@ -78,3 +78,32 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	utils.Success(w, tokens)
 }
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Get tokens from request
+	accessToken := r.Header.Get("Authorization")
+	if accessToken != "" {
+		// Remove "Bearer " prefix
+		if len(accessToken) > 7 && accessToken[:7] == "Bearer " {
+			accessToken = accessToken[7:]
+		}
+	}
+
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// If no body, just proceed with access token
+		req.RefreshToken = ""
+	}
+
+	// Perform logout (blacklist tokens)
+	if err := h.authUC.Logout(r.Context(), accessToken, req.RefreshToken); err != nil {
+		utils.InternalServerError(w, err.Error())
+		return
+	}
+
+	utils.Success(w, map[string]string{
+		"message": "logged out successfully",
+	})
+}

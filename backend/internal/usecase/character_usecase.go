@@ -12,6 +12,7 @@ type CharacterUseCase interface {
 	GetUserCharacters(ctx context.Context, userID int64) ([]*domain.UserCharacter, error)
 	GetUserCharacterDetail(ctx context.Context, userCharacterID int64) (*domain.CharacterDetail, error)
 	LevelUp(ctx context.Context, userCharacterID int64, expCrystals int) error
+	Awaken(ctx context.Context, userCharacterID int64) error
 }
 
 type characterUseCase struct {
@@ -93,4 +94,64 @@ func (uc *characterUseCase) LevelUp(ctx context.Context, userCharacterID int64, 
 	}
 
 	return uc.userRepo.UpdateCurrency(ctx, user.ID, 0, -goldCost)
+}
+
+func (uc *characterUseCase) Awaken(ctx context.Context, userCharacterID int64) error {
+	// Get user character with detail
+	detail, err := uc.charRepo.GetUserCharacterDetail(ctx, userCharacterID)
+	if err != nil {
+		return err
+	}
+
+	// Check if already awakened
+	if detail.Awakened {
+		return fmt.Errorf("character is already awakened")
+	}
+
+	// Check if character is at max level for current grade
+	maxLevel := domain.GetMaxLevel(detail.Character.Grade)
+	if detail.Level < maxLevel {
+		return fmt.Errorf("character must be at max level (%d) to awaken", maxLevel)
+	}
+
+	// Check if grade can be upgraded (max grade is 5)
+	if detail.Character.Grade >= 5 {
+		return fmt.Errorf("character is already at maximum grade")
+	}
+
+	// Get user to check resources
+	user, err := uc.userRepo.GetByID(ctx, detail.UserID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate awakening cost (simplified: crystals based on grade)
+	crystalCost := int64(detail.Character.Grade * 1000)
+	goldCost := int64(detail.Character.Grade * 50000)
+
+	if user.Crystals < crystalCost {
+		return fmt.Errorf("insufficient crystals: need %d, have %d", crystalCost, user.Crystals)
+	}
+	if user.Gold < goldCost {
+		return fmt.Errorf("insufficient gold: need %d, have %d", goldCost, user.Gold)
+	}
+
+	// Perform awakening
+	detail.Awakened = true
+	detail.Level = 1 // Reset level to 1
+	detail.Exp = 0
+
+	// Increase stats significantly (simplified: 50% increase)
+	detail.CurrentHP = int(float64(detail.CurrentHP) * 1.5)
+	detail.CurrentATK = int(float64(detail.CurrentATK) * 1.5)
+	detail.CurrentDEF = int(float64(detail.CurrentDEF) * 1.5)
+	detail.CurrentSPD = int(float64(detail.CurrentSPD) * 1.5)
+
+	// Update character
+	if err := uc.charRepo.UpdateUserCharacter(ctx, &detail.UserCharacter); err != nil {
+		return err
+	}
+
+	// Deduct resources
+	return uc.userRepo.UpdateCurrency(ctx, user.ID, -crystalCost, -goldCost)
 }

@@ -16,10 +16,12 @@ type Router struct {
 
 func NewRouter(
 	jwt *auth.JWT,
+	tokenService *auth.TokenService,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	characterHandler *CharacterHandler,
 	summonHandler *SummonHandler,
+	dungeonHandler *DungeonHandler,
 	wsHandler *WebSocketHandler,
 ) *Router {
 	r := mux.NewRouter()
@@ -46,23 +48,33 @@ func NewRouter(
 	auth.HandleFunc("/register", authHandler.Register).Methods("POST")
 	auth.HandleFunc("/login", authHandler.Login).Methods("POST")
 	auth.HandleFunc("/refresh", authHandler.Refresh).Methods("POST")
+	auth.HandleFunc("/logout", authHandler.Logout).Methods("POST")
 
 	// Protected routes
 	protected := api.PathPrefix("").Subrouter()
-	protected.Use(middleware.AuthMiddleware(jwt))
+	protected.Use(middleware.AuthMiddleware(jwt, tokenService))
 
 	// User routes
 	protected.HandleFunc("/user/profile", userHandler.GetProfile).Methods("GET")
+	protected.HandleFunc("/user/inventory", userHandler.GetInventory).Methods("GET")
 
 	// Character routes
 	protected.HandleFunc("/characters", characterHandler.GetUserCharacters).Methods("GET")
 	protected.HandleFunc("/characters/{id}", characterHandler.GetCharacterDetail).Methods("GET")
 	protected.HandleFunc("/characters/{id}/level-up", characterHandler.LevelUp).Methods("POST")
+	protected.HandleFunc("/characters/{id}/awaken", characterHandler.Awaken).Methods("POST")
 
 	// Summon routes
 	protected.HandleFunc("/summon/normal", summonHandler.NormalSummon).Methods("POST")
 	protected.HandleFunc("/summon/premium", summonHandler.PremiumSummon).Methods("POST")
 	protected.HandleFunc("/summon/rates", summonHandler.GetRates).Methods("GET")
+
+	// Dungeon routes
+	protected.HandleFunc("/dungeons", dungeonHandler.GetDungeons).Methods("GET")
+	protected.HandleFunc("/dungeons/{id}", dungeonHandler.GetDungeonDetail).Methods("GET")
+	protected.HandleFunc("/dungeons/progress", dungeonHandler.GetProgress).Methods("GET")
+	protected.HandleFunc("/dungeons/{id}/enter", dungeonHandler.EnterDungeon).Methods("POST")
+	protected.HandleFunc("/dungeons/{id}/complete", dungeonHandler.CompleteDungeon).Methods("POST")
 
 	// WebSocket route
 	r.HandleFunc("/ws", wsHandler.HandleConnection)

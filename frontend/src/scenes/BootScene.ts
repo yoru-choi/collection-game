@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS } from '@/utils/Constants';
+import { GameDataStore } from '@/store/GameDataStore';
 
 export class BootScene extends Phaser.Scene {
   private loadingText!: Phaser.GameObjects.Text;
@@ -109,8 +110,6 @@ export class BootScene extends Phaser.Scene {
     console.log('Boot Scene: Assets loaded successfully');
     
     // Initialize game data store with mock data for development
-    // Remove this in production
-    const { GameDataStore } = require('@/store/GameDataStore');
     const gameData = GameDataStore.getInstance();
     
     // Load mock data if no player data exists
@@ -119,15 +118,21 @@ export class BootScene extends Phaser.Scene {
       gameData.loadMockData();
     }
     
-    // Check if user is already logged in (from localStorage)
-    const token = localStorage.getItem('authToken');
+    // Check if user is already logged in
+    const { AuthService } = require('@/services/AuthService');
+    const authService = new AuthService();
     
-    if (token) {
+    if (authService.isAuthenticated()) {
       // User is logged in, go to lobby
       this.scene.start(SCENE_KEYS.LOBBY);
     } else {
       // User is not logged in, go to login screen
       this.scene.start(SCENE_KEYS.LOGIN);
     }
+    
+    // Listen for logout event
+    window.addEventListener('auth:logout', () => {
+      this.scene.start(SCENE_KEYS.LOGIN);
+    });
   }
 }

@@ -21,6 +21,9 @@ const config: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    // 반응형: 모든 화면 크기에 자동 대응 (Windows, iPad, Mobile)
+    width: 1280,
+    height: 720,
   },
   physics: {
     default: 'arcade',

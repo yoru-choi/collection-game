@@ -212,8 +212,8 @@ export class LoginScene extends Phaser.Scene {
       const password = 'password123';
       
       try {
-        const response = await this.authService.login(email, password);
-        console.log('Login successful:', response);
+        await this.authService.login(email, password);
+        console.log('Login successful');
         this.scene.start(SCENE_KEYS.LOBBY);
       } catch (error) {
         console.error('Login failed:', error);
@@ -226,8 +226,8 @@ export class LoginScene extends Phaser.Scene {
       const password = 'password123';
       
       try {
-        const response = await this.authService.register(username, email, password);
-        console.log('Registration successful:', response);
+        await this.authService.register(username, email, password);
+        console.log('Registration successful');
         this.scene.start(SCENE_KEYS.LOBBY);
       } catch (error) {
         console.error('Registration failed:', error);
@@ -236,10 +236,14 @@ export class LoginScene extends Phaser.Scene {
     }
   }
 
-  private handleGuestLogin(): void {
+  private async handleGuestLogin(): Promise<void> {
     // Bypass authentication for development
     console.log('Guest login - bypassing authentication');
-    localStorage.setItem('authToken', 'guest-token');
+    
+    // 개발 모드: 목 토큰 설정
+    const { httpClient } = require('@/services/api/HttpClient');
+    httpClient.setAccessToken('guest-dev-token');
+    
     this.scene.start(SCENE_KEYS.LOBBY);
   }
 

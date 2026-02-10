@@ -15,17 +15,20 @@ type AuthUseCase interface {
 	Register(ctx context.Context, username, email, password string) (*auth.TokenPair, error)
 	Login(ctx context.Context, username, password string) (*auth.TokenPair, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error)
+	Logout(ctx context.Context, accessToken string, refreshToken string) error
 }
 
 type authUseCase struct {
-	userRepo repository.UserRepository
-	jwt      *auth.JWT
+	userRepo     repository.UserRepository
+	jwt          *auth.JWT
+	tokenService *auth.TokenService
 }
 
-func NewAuthUseCase(userRepo repository.UserRepository, jwt *auth.JWT) AuthUseCase {
+func NewAuthUseCase(userRepo repository.UserRepository, jwt *auth.JWT, tokenService *auth.TokenService) AuthUseCase {
 	return &authUseCase{
-		userRepo: userRepo,
-		jwt:      jwt,
+		userRepo:     userRepo,
+		jwt:          jwt,
+		tokenService: tokenService,
 	}
 }
 
@@ -81,6 +84,16 @@ func (uc *authUseCase) Register(ctx context.Context, username, email, password s
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
+	// Store refresh token in Valkey
+	refreshClaims, err := uc.jwt.ValidateToken(tokens.RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate refresh token: %w", err)
+	}
+
+	if err := uc.tokenService.StoreRefreshToken(ctx, user.ID, refreshClaims.TokenID, tokens.RefreshToken); err != nil {
+		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
 	return tokens, nil
 }
 
@@ -102,6 +115,16 @@ func (uc *authUseCase) Login(ctx context.Context, username, password string) (*a
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
+	// Store refresh token in Valkey
+	refreshClaims, err := uc.jwt.ValidateToken(tokens.RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate refresh token: %w", err)
+	}
+
+	if err := uc.tokenService.StoreRefreshToken(ctx, user.ID, refreshClaims.TokenID, tokens.RefreshToken); err != nil {
+		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
 	return tokens, nil
 }
 
@@ -112,11 +135,60 @@ func (uc *authUseCase) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, err
 	}
 
+	// Check if refresh token exists in Valkey
+	valid, err := uc.tokenService.ValidateRefreshToken(ctx, claims.UserID, claims.TokenID)
+	if err != nil || !valid {
+		return nil, errors.New("invalid or expired refresh token")
+	}
+
+	// Revoke old refresh token (Token Rotation)
+	if err := uc.tokenService.RevokeRefreshToken(ctx, claims.UserID, claims.TokenID); err != nil {
+		return nil, fmt.Errorf("failed to revoke old refresh token: %w", err)
+	}
+
 	// Generate new token pair
 	tokens, err := uc.jwt.GenerateTokenPair(claims.UserID, claims.Username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
+	// Store new refresh token in Valkey
+	newRefreshClaims, err := uc.jwt.ValidateToken(tokens.RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate new refresh token: %w", err)
+	}
+
+	if err := uc.tokenService.StoreRefreshToken(ctx, claims.UserID, newRefreshClaims.TokenID, tokens.RefreshToken); err != nil {
+		return nil, fmt.Errorf("failed to store new refresh token: %w", err)
+	}
+
 	return tokens, nil
+}
+
+func (uc *authUseCase) Logout(ctx context.Context, accessToken string, refreshToken string) error {
+	// Validate access token
+	accessClaims, err := uc.jwt.ValidateToken(accessToken)
+	if err != nil && err != auth.ErrExpiredToken {
+		// If token is invalid (not just expired), still try to clean up
+		return nil
+	}
+
+	// Blacklist access token
+	if accessClaims != nil {
+		if err := uc.tokenService.BlacklistToken(ctx, accessClaims.TokenID); err != nil {
+			return fmt.Errorf("failed to blacklist access token: %w", err)
+		}
+	}
+
+	// Validate and revoke refresh token
+	if refreshToken != "" {
+		refreshClaims, err := uc.jwt.ValidateToken(refreshToken)
+		if err == nil {
+			if err := uc.tokenService.RevokeRefreshToken(ctx, refreshClaims.UserID, refreshClaims.TokenID); err != nil {
+				return fmt.Errorf("failed to revoke refresh token: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
