@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, COLORS, UI } from '@/utils/Constants';
 import { isValidEmail } from '@/utils/Helpers';
 import { AuthService } from '@/services/AuthService';
+import { httpClient } from '@/services/api/HttpClient';
 
 export class LoginScene extends Phaser.Scene {
   private authService!: AuthService;
@@ -241,7 +242,6 @@ export class LoginScene extends Phaser.Scene {
     console.log('Guest login - bypassing authentication');
     
     // 개발 모드: 목 토큰 설정
-    const { httpClient } = require('@/services/api/HttpClient');
     httpClient.setAccessToken('guest-dev-token');
     
     this.scene.start(SCENE_KEYS.LOBBY);

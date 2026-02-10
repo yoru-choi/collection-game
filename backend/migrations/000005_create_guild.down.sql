@@ -1,0 +1,5 @@
+-- Drop guild tables
+DROP TABLE IF EXISTS guild_wars CASCADE;
+DROP TABLE IF EXISTS guild_applications CASCADE;
+DROP TABLE IF EXISTS guild_members CASCADE;
+DROP TABLE IF EXISTS guilds CASCADE;

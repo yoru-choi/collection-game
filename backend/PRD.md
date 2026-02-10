@@ -3,7 +3,7 @@
 ## 1. 프로젝트 개요
 
 ### 1.1 제품 비전
-서머너즈워 스타일의 턴제 전략 RPG로, 매력적인 여성 캐릭터들을 수집하고 육성하여 다양한 전투 콘텐츠를 즐기는 모바일/웹 게임
+서머너즈워 스타일을 간소화한 턴제 수집형 RPG를 1인 개발로 구현한다. 핵심 재미(수집 → 성장 → 전투 → 보상)를 유지하되 시스템 복잡도는 낮춘다.
 
 ### 1.2 기술 스택
 - **프론트엔드**: Phaser 3 (2D game engine) + TypeScript + Vite
@@ -101,233 +101,89 @@
 
 **선정 사이트: OpenGameArt.org** (https://opengameart.org/)
 
-#### 1.6.1 선정 이유
+**정책:**
+- 로컬 개발은 핫링크로 빠르게 진행한다.
+- 배포 시에는 필요한 에셋을 다운로드하여 로컬로 번들링한다.
+- 라이선스는 CC0/CC-BY 위주로 사용하고 크레딧을 표시한다.
 
-OpenGameArt.org는 다음과 같은 이유로 프로젝트의 유일한 에셋 소스로 선정되었습니다:
+### 1.7 핵심 게임 흐름 (자연스러운 플레이 루프)
+1. **로그인/튜토리얼** → 기본 조작 안내, 무료 소환 1회 제공
+2. **소환(가챠)** → 첫 파티 구성 (기본 4인)
+3. **스토리 던전 1-1** → 전투 튜토리얼 + 보상 획득
+4. **성장(레벨업/각성)** → 스탯 상승, 다음 던전 개방
+5. **반복 플레이** → 던전 파밍 → 성장 → 난이도 상승
+6. **일일 루틴** → 일일 퀘스트/던전 → 재화 수급
+7. **엔드게임** → 보스/아레나(비동기)로 목표 제공
 
-**장점:**
-- ✅ **오픈소스 커뮤니티**: 완전한 무료 게임 에셋 저장소
-- ✅ **명확한 라이선스**: CC0 (Public Domain), CC-BY 3.0/4.0, OGA-BY 3.0 등
-- ✅ **직접 URL 접근 가능**: 이미지 파일에 직접 핫링크 가능
-- ✅ **상업적 사용 허용**: 대부분의 에셋이 상업적 사용 가능 (크레딧 표기 조건)
-- ✅ **RPG 에셋 풍부**: 여성 캐릭터, 던전, UI, 타일셋 등 프로젝트에 필요한 모든 에셋
-- ✅ **활발한 커뮤니티**: 지속적인 업데이트, 검증된 품질
+### 1.8 첫 10분 튜토리얼 스크립트 (AI 구현용)
+1. **로그인 완료**: 닉네임 설정, 기본 UI 안내
+2. **무료 소환 1회**: 캐릭터 3종 중 1종 확정 지급
+3. **파티 편성**: 지급 캐릭터 + 기본 캐릭터로 4인 파티 구성
+4. **스토리 1-1 입장**: 전투 조작 안내 (스킬 1회 사용)
+5. **전투 승리 보상**: 골드/경험치/재료 지급
+6. **레벨업 안내**: 캐릭터 1회 레벨업 수행
+7. **다음 목표 안내**: 스토리 1-2, 일일 퀘스트 1개 해금
 
-**주요 에셋 카테고리:**
-- 2D 픽셀 아트 캐릭터 스프라이트 (16x16, 32x32, 64x64)
-- RPG 타일셋 (던전, 마을, 자연 환경)
-- UI/GUI 요소 (버튼, 패널, 아이콘)
-- 스킬 이펙트 (화염, 물, 바람, 마법)
-- 배경 음악 및 효과음 (Royalty Free)
-
-#### 1.6.2 개발 전략: 핫링크 (Hotlink) 방식
-
-**로컬 개발 환경 (핫링크 사용)**
-- OpenGameArt.org의 이미지 URL을 직접 Phaser 3 코드에서 로드
-- 에셋 다운로드 없이 즉시 개발 시작 가능
-- 빠른 프로토타이핑 및 에셋 테스트
-- 인터넷 연결 필요
-
-**프로덕션 배포 환경 (로컬 에셋 사용)**
-- 선택한 에셋을 다운로드하여 `frontend/public/assets/` 저장
-- 빌드 시 Vite가 에셋을 번들링
-- CDN 배포 가능
-- 인터넷 연결 불필요
-
-#### 1.6.3 에셋 로딩 구현 (환경별 전환)
-
-**환경 변수 설정 (.env)**
-```bash
-# .env.development (로컬 개발)
-VITE_ASSETS_MODE=hotlink
-VITE_ASSETS_BASE_URL=https://opengameart.org
-
-# .env.production (배포)
-VITE_ASSETS_MODE=local
-VITE_ASSETS_BASE_URL=/assets
-```
-
-**Phaser 3 에셋 로딩 유틸리티**
-```typescript
-// src/config/AssetConfig.ts
-export class AssetConfig {
-  private static readonly IS_HOTLINK = import.meta.env.VITE_ASSETS_MODE === 'hotlink';
-  private static readonly BASE_URL = import.meta.env.VITE_ASSETS_BASE_URL;
-
-  /**
-   * 환경에 따라 에셋 URL 반환
-   * - 개발: OpenGameArt.org 직접 링크 (핫링크)
-   * - 배포: 로컬 assets 폴더
-   */
-  static getAssetUrl(localPath: string, hotlinkUrl?: string): string {
-    if (this.IS_HOTLINK && hotlinkUrl) {
-      return hotlinkUrl;
-    }
-    return `${this.BASE_URL}/${localPath}`;
-  }
-}
-
-// src/scenes/BootScene.ts
-import { AssetConfig } from '../config/AssetConfig';
-
-export class BootScene extends Phaser.Scene {
-  preload() {
-    // 여성 전사 캐릭터 (LPC Character Base)
-    const warriorUrl = AssetConfig.getAssetUrl(
-      'characters/female/warrior/lpc_warrior.png',
-      'https://opengameart.org/sites/default/files/lpc-warrior-female.png'
-    );
-    this.load.spritesheet('warrior_female', warriorUrl, {
-      frameWidth: 64,
-      frameHeight: 64
-    });
-
-    // 던전 타일셋
-    const dungeonUrl = AssetConfig.getAssetUrl(
-      'tilesets/dungeon/dungeon_tiles.png',
-      'https://opengameart.org/sites/default/files/dungeon-tileset-16x16.png'
-    );
-    this.load.image('dungeon_tiles', dungeonUrl);
-
-    // UI 버튼
-    const buttonUrl = AssetConfig.getAssetUrl(
-      'ui/buttons/button_normal.png',
-      'https://opengameart.org/sites/default/files/fantasy-button.png'
-    );
-    this.load.image('button_normal', buttonUrl);
-  }
-}
-```
-
-#### 1.6.4 에셋 목록 관리
-
-```typescript
-// src/game/assets/asset-list.ts
-export interface AssetInfo {
-  key: string;                    // Phaser에서 사용할 키
-  localPath: string;              // 로컬 경로 (프로덕션)
-  hotlinkUrl: string;             // OpenGameArt.org URL (개발)
-  author: string;                 // 작가 이름
-  license: string;                // 라이선스
-  sourceUrl: string;              // 출처 페이지
-  creditRequired: boolean;        // 크레딧 표기 필요 여부
-}
-
-export const ASSET_LIST: Record<string, AssetInfo> = {
-  warrior_female: {
-    key: 'warrior_female',
-    localPath: 'characters/female/warrior/lpc_warrior.png',
-    hotlinkUrl: 'https://opengameart.org/sites/default/files/lpc-warrior-female.png',
-    author: 'Redshrike, William.Thompsonj',
-    license: 'CC-BY 3.0, GPL 3.0',
-    sourceUrl: 'https://opengameart.org/content/lpc-character-bases',
-    creditRequired: true
-  },
-  dungeon_tiles: {
-    key: 'dungeon_tiles',
-    localPath: 'tilesets/dungeon/dungeon_16x16.png',
-    hotlinkUrl: 'https://opengameart.org/sites/default/files/dungeon-tileset.png',
-    author: '0x72',
-    license: 'CC0 (Public Domain)',
-    sourceUrl: 'https://opengameart.org/content/dungeon-tileset-16x16',
-    creditRequired: false
-  }
-};
-```
-
-#### 1.6.5 배포 전 에셋 다운로드
-
-**package.json 스크립트**
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "npm run download-assets && vite build",
-    "download-assets": "node scripts/download-assets.js"
-  }
-}
-```
-
-**다운로드 스크립트 (scripts/download-assets.js)**
-```javascript
-import fs from 'fs';
-import path from 'path';
-import https from 'https';
-import { ASSET_LIST } from '../src/game/assets/asset-list.ts';
-
-async function downloadFile(url, dest) {
-  const dir = path.dirname(dest);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https.get(url, (response) => {
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        console.log(`✓ Downloaded: ${path.basename(dest)}`);
-        resolve();
-      });
-    }).on('error', reject);
-  });
-}
-
-async function downloadAllAssets() {
-  console.log('📦 Downloading assets from OpenGameArt.org...\n');
-
-  for (const [key, asset] of Object.entries(ASSET_LIST)) {
-    const destPath = path.join('./public/assets', asset.localPath);
-    
-    if (fs.existsSync(destPath)) {
-      console.log(`⊗ Skip: ${asset.localPath}`);
-      continue;
-    }
-
-    try {
-      await downloadFile(asset.hotlinkUrl, destPath);
-    } catch (error) {
-      console.error(`✗ Failed: ${key}`, error.message);
-    }
-  }
-
-  console.log('\n✅ Complete!');
-}
-
-downloadAllAssets();
-```
-
-#### 1.6.6 추천 에셋 (여성 캐릭터 중심)
-
-**OpenGameArt.org 주요 에셋:**
-
-1. **LPC (Liberated Pixel Cup) Character Base** ⭐
-   - URL: https://opengameart.org/content/lpc-character-bases
-   - 여성 캐릭터 스프라이트 (64x64)
-   - 4방향 이동, 공격, 스킬 사용 애니메이션
-   - 라이선스: CC-BY 3.0, GPL 3.0
-
-2. **Dungeon Tileset II**
-   - URL: https://opengameart.org/content/dungeon-tileset-ii
-   - 16x16 픽셀 던전 타일셋
-   - 라이선스: CC0 (Public Domain)
-
-3. **Fantasy UI Borders**
-   - URL: https://opengameart.org/content/fantasy-ui-borders
-   - RPG 스타일 UI 요소
-   - 라이선스: CC0
-
-**검색 키워드:**
-- `LPC female character`
-- `RPG girl sprite`
-- `dungeon tileset 16x16`
-- `fantasy UI`
-- `fire spell effect`
+### 1.9 세션 종료 흐름 (자연스러운 마무리)
+1. **종료 트리거**: 에너지 소진 또는 일일 퀘스트 완료
+2. **보상 정산**: 오늘 획득한 보상 요약 표시
+3. **다음 세션 목표 제안**: 다음 스토리 스테이지, 강화 대상 1개 추천
+4. **휴식 안내**: 내일 보상/리셋 시간 안내 + 종료 버튼 노출
 
 ---
 
-## 2. 핵심 기능 (Core Features)
+## 2. 게임 루프 및 시스템 (간소화 버전)
+
+### 2.1 핵심 루프
+**전투 → 보상 → 성장 → 던전 해금 → 반복**
+
+### 2.2 수집/소환
+- 소환은 **일반/프리미엄** 2종만 운영
+- 5성 확률은 낮게, 천장 시스템은 MVP 이후 고려
+
+### 2.3 캐릭터 성장
+- **레벨업**: 전투로 경험치 획득
+- **각성**: 같은 성급 재료로 승급 (간단한 규칙)
+- **스킬 강화**: 재료 아이템으로 1~5단계
+
+### 2.4 전투 시스템
+- **턴제 + SPD 기반 턴 순서**
+- 파티는 **최대 4인**
+- Auto/배속(1x, 2x)만 제공
+
+### 2.5 던전/콘텐츠
+- **스토리 던전**: 챕터별 난이도 2단계
+- **재료 던전**: 레벨업/각성 재료 전용
+- **보스 레이드**: 단일 보스, 주간 리셋
+- **아레나**: 비동기 PvP (AI 방어팀)
+
+### 2.6 재화/상점
+- 재화는 **골드/크리스탈** 2종으로 단순화
+- 상점은 **일일 상점 + 가챠 상점**만 운영
+
+### 2.7 일일 루틴
+- 일일 퀘스트 5개, 완료 보상 제공
+- 로그인 보상 (7일 사이클)
+
+---
+
+## 3. UI/UX (간소화)
+
+### 3.1 주요 화면
+1. 로비 (메뉴 허브)
+2. 소환
+3. 캐릭터 관리
+4. 던전 선택
+5. 전투
+6. 상점
+7. 크레딧
+
+### 3.2 UX 원칙
+- 3탭 이내로 주요 기능 접근
+- 전투 결과에서 다음 행동(재도전/성장/다음 던전)을 바로 제안
+- UI는 텍스트보다 아이콘 중심, 핵심 정보만 표시
+
+---
 
 ### 2.1 캐릭터 수집 시스템
 

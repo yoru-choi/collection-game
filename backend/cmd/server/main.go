@@ -80,6 +80,8 @@ func main() {
 	charRepo := repository.NewCharacterRepository(db.DB)
 	summonRepo := repository.NewSummonRepository(db.DB)
 	dungeonRepo := repository.NewDungeonRepository(db.DB)
+	arenaRepo := repository.NewArenaRepository(db.DB)
+	questRepo := repository.NewQuestRepository(db.DB)
 	logger.Info("Repositories initialized", nil)
 
 	// Initialize use cases
@@ -88,6 +90,8 @@ func main() {
 	charUC := usecase.NewCharacterUseCase(charRepo, userRepo)
 	summonUC := usecase.NewSummonUseCase(userRepo, charRepo, summonRepo)
 	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo)
+	arenaUC := usecase.NewArenaUseCase(arenaRepo, userRepo, charRepo)
+	questUC := usecase.NewQuestUseCase(questRepo, userRepo)
 	logger.Info("Use cases initialized", nil)
 
 	// Initialize WebSocket Hub

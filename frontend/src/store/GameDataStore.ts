@@ -1,4 +1,5 @@
 import { User, UserCharacter, InventoryItem, Quest } from '@/types';
+import { wsClient } from '@/services/api/WebSocketClient';
 
 export class GameDataStore {
   private static instance: GameDataStore;
@@ -219,7 +220,6 @@ export class GameDataStore {
 
     // Initialize WebSocket connection (optional for development)
     try {
-      const { wsClient } = require('@/services/api/WebSocketClient');
       if (!wsClient.isConnected()) {
         // Don't block on WebSocket connection in development
         setTimeout(() => wsClient.connect(), 1000);

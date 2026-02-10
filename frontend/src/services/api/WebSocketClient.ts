@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { GAME_CONFIG, WS_EVENTS } from '@/utils/Constants';
+import { httpClient } from './HttpClient';
 
 export type WSEventCallback = (data: any) => void;
 
@@ -11,22 +12,30 @@ export class WebSocketClient {
   private reconnectDelay: number = 1000;
 
   connect(): void {
-    if (this.socket?.connected) return;
+    if (this.socket?.connected) {
+      console.log('WebSocket already connected');
+      return;
+    }
 
-    const token = localStorage.getItem('authToken');
+    const token = httpClient.getAccessToken();
     
-    this.socket = io(GAME_CONFIG.WS_URL, {
-      auth: {
-        token,
-      },
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: this.maxReconnectAttempts,
-      reconnectionDelay: this.reconnectDelay,
-    });
+    try {
+      this.socket = io(GAME_CONFIG.WS_URL, {
+        auth: {
+          token,
+        },
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: this.reconnectDelay,
+      });
 
-    this.setupConnectionHandlers();
-    this.setupEventForwarding();
+      this.setupConnectionHandlers();
+      this.setupEventForwarding();
+    } catch (error) {
+      console.warn('WebSocket connection failed:', error);
+      // Continue without WebSocket in development
+    }
   }
 
   private setupConnectionHandlers(): void {

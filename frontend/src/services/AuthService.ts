@@ -1,4 +1,5 @@
 import { httpClient } from './api/HttpClient';
+import { GAME_CONFIG } from '@/utils/Constants';
 import {
   LoginRequest,
   RegisterRequest,
@@ -99,7 +100,6 @@ export class AuthService {
       clearInterval(this.refreshTimerId);
     }
 
-    const { GAME_CONFIG } = require('@/utils/Constants');
     this.refreshTimerId = window.setInterval(() => {
       if (this.isAuthenticated()) {
         this.refreshToken();

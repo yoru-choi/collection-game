@@ -1,22 +1,27 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS } from '@/utils/Constants';
 import { GameDataStore } from '@/store/GameDataStore';
+import { AuthService } from '@/services/AuthService';
 
 export class BootScene extends Phaser.Scene {
   private loadingText!: Phaser.GameObjects.Text;
   private progressBar!: Phaser.GameObjects.Graphics;
   private progressBox!: Phaser.GameObjects.Graphics;
+  private authService: AuthService;
 
   constructor() {
     super({ key: SCENE_KEYS.BOOT });
+    this.authService = new AuthService();
   }
 
   preload(): void {
+    console.log('BootScene: Starting preload...');
     this.createLoadingScreen();
     this.loadAssets();
   }
 
   private createLoadingScreen(): void {
+    console.log('BootScene: Creating loading screen...');
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
@@ -59,6 +64,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   private loadAssets(): void {
+    console.log('BootScene: Loading assets...');
+    
     // TODO: Load actual game assets
     // For now, we'll create placeholder assets
     
@@ -77,6 +84,15 @@ export class BootScene extends Phaser.Scene {
     
     // Create placeholder graphics for development
     this.createPlaceholderAssets();
+    
+    // Ensure load:complete event fires even with no assets
+    if (this.load.totalToLoad === 0) {
+      console.log('BootScene: No assets to load, triggering complete event manually');
+      this.load.once('complete', () => {
+        console.log('BootScene: Load complete event fired');
+      });
+      this.load.start();
+    }
   }
 
   private createPlaceholderAssets(): void {
@@ -109,29 +125,48 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     console.log('Boot Scene: Assets loaded successfully');
     
+    // 디버그: 화면에 상태 표시
+    const statusText = this.add.text(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2,
+      'Initializing...',
+      {
+        fontSize: '24px',
+        color: '#ffffff',
+      }
+    );
+    statusText.setOrigin(0.5);
+    
     // Initialize game data store with mock data for development
     const gameData = GameDataStore.getInstance();
     
     // Load mock data if no player data exists
     if (!gameData.getPlayerData()) {
       console.log('Loading mock player data for development...');
+      statusText.setText('Loading game data...');
       gameData.loadMockData();
     }
     
     // Check if user is already logged in
-    const { AuthService } = require('@/services/AuthService');
-    const authService = new AuthService();
-    
-    if (authService.isAuthenticated()) {
+    if (this.authService.isAuthenticated()) {
       // User is logged in, go to lobby
-      this.scene.start(SCENE_KEYS.LOBBY);
+      console.log('User authenticated, starting lobby...');
+      statusText.setText('Starting game...');
+      this.time.delayedCall(500, () => {
+        this.scene.start(SCENE_KEYS.LOBBY);
+      });
     } else {
       // User is not logged in, go to login screen
-      this.scene.start(SCENE_KEYS.LOGIN);
+      console.log('User not authenticated, starting login...');
+      statusText.setText('Loading login screen...');
+      this.time.delayedCall(500, () => {
+        this.scene.start(SCENE_KEYS.LOGIN);
+      });
     }
     
     // Listen for logout event
     window.addEventListener('auth:logout', () => {
+      console.log('Logout event received, returning to login...');
       this.scene.start(SCENE_KEYS.LOGIN);
     });
   }

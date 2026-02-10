@@ -12,6 +12,8 @@ import { GuildScene } from './scenes/GuildScene';
 import { ShopScene } from './scenes/ShopScene';
 import { InventoryScene } from './scenes/InventoryScene';
 
+console.log('Game config: Initializing...');
+
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 1280,
@@ -46,6 +48,16 @@ const config: Phaser.Types.Core.GameConfig = {
     ShopScene,
     InventoryScene,
   ],
+  callbacks: {
+    preBoot: (game) => {
+      console.log('Game config: Pre-boot callback', game);
+    },
+    postBoot: (game) => {
+      console.log('Game config: Post-boot callback', game);
+    },
+  },
 };
+
+console.log('Game config: Configuration created', config);
 
 export default config;

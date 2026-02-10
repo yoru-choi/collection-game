@@ -22,6 +22,8 @@ func NewRouter(
 	characterHandler *CharacterHandler,
 	summonHandler *SummonHandler,
 	dungeonHandler *DungeonHandler,
+	arenaHandler *ArenaHandler,
+	questHandler *QuestHandler,
 	wsHandler *WebSocketHandler,
 ) *Router {
 	r := mux.NewRouter()
@@ -75,6 +77,20 @@ func NewRouter(
 	protected.HandleFunc("/dungeons/progress", dungeonHandler.GetProgress).Methods("GET")
 	protected.HandleFunc("/dungeons/{id}/enter", dungeonHandler.EnterDungeon).Methods("POST")
 	protected.HandleFunc("/dungeons/{id}/complete", dungeonHandler.CompleteDungeon).Methods("POST")
+
+	// Arena routes
+	protected.HandleFunc("/arena", arenaHandler.GetMyArena).Methods("GET")
+	protected.HandleFunc("/arena/defense", arenaHandler.SetDefenseTeam).Methods("PUT")
+	protected.HandleFunc("/arena/ranking", arenaHandler.GetRanking).Methods("GET")
+	protected.HandleFunc("/arena/attack", arenaHandler.Attack).Methods("POST")
+	protected.HandleFunc("/arena/history", arenaHandler.GetBattleHistory).Methods("GET")
+
+	// Quest routes
+	protected.HandleFunc("/quests/daily", questHandler.GetDailyQuests).Methods("GET")
+	protected.HandleFunc("/quests/weekly", questHandler.GetWeeklyQuests).Methods("GET")
+	protected.HandleFunc("/quests/achievements", questHandler.GetAchievements).Methods("GET")
+	protected.HandleFunc("/quests/{id}/claim", questHandler.ClaimQuest).Methods("POST")
+	protected.HandleFunc("/login/daily", questHandler.GetDailyLogin).Methods("GET")
 
 	// WebSocket route
 	r.HandleFunc("/ws", wsHandler.HandleConnection)
