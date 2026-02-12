@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"collection-game/internal/domain"
+	"collection-game/internal/middleware"
 	"collection-game/internal/usecase"
 	"collection-game/pkg/utils"
 )
@@ -22,34 +23,42 @@ func NewArenaHandler(arenaUC *usecase.ArenaUseCase) *ArenaHandler {
 
 // GetMyArena gets user's arena status
 func (h *ArenaHandler) GetMyArena(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int64)
-
-	arena, err := h.arenaUC.GetMyArena(r.Context(), userID)
-	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Failed to get arena status")
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Unauthorized(w, "user not authenticated")
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, arena)
+	arena, err := h.arenaUC.GetMyArena(r.Context(), userID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Failed to get arena status")
+		return
+	}
+
+	utils.Success(w, arena)
 }
 
 // SetDefenseTeam sets user's defense team
 func (h *ArenaHandler) SetDefenseTeam(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int64)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Unauthorized(w, "user not authenticated")
+		return
+	}
 
 	var req domain.DefenseTeam
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		utils.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	err := h.arenaUC.SetDefenseTeam(r.Context(), userID, req.CharacterIDs)
 	if err != nil {
-		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		utils.BadRequest(w, err.Error())
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, map[string]string{
+	utils.Success(w, map[string]string{
 		"message": "Defense team set successfully",
 	})
 }
@@ -66,16 +75,20 @@ func (h *ArenaHandler) GetRanking(w http.ResponseWriter, r *http.Request) {
 
 	rankings, err := h.arenaUC.GetRanking(r.Context(), limit)
 	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Failed to get rankings")
+		utils.Error(w, http.StatusInternalServerError, "Failed to get rankings")
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, rankings)
+	utils.Success(w, rankings)
 }
 
 // Attack performs an arena attack
 func (h *ArenaHandler) Attack(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int64)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Unauthorized(w, "user not authenticated")
+		return
+	}
 
 	var req struct {
 		DefenderID   int64   `json:"defender_id"`
@@ -83,17 +96,17 @@ func (h *ArenaHandler) Attack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		utils.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	won, ratingChange, err := h.arenaUC.Attack(r.Context(), userID, req.DefenderID, req.AttackerTeam)
 	if err != nil {
-		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		utils.BadRequest(w, err.Error())
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	utils.Success(w, map[string]interface{}{
 		"won":           won,
 		"rating_change": ratingChange,
 	})
@@ -101,7 +114,11 @@ func (h *ArenaHandler) Attack(w http.ResponseWriter, r *http.Request) {
 
 // GetBattleHistory gets user's battle history
 func (h *ArenaHandler) GetBattleHistory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int64)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Unauthorized(w, "user not authenticated")
+		return
+	}
 
 	limitStr := r.URL.Query().Get("limit")
 	limit := 20
@@ -113,9 +130,9 @@ func (h *ArenaHandler) GetBattleHistory(w http.ResponseWriter, r *http.Request) 
 
 	history, err := h.arenaUC.GetBattleHistory(r.Context(), userID, limit)
 	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Failed to get battle history")
+		utils.Error(w, http.StatusInternalServerError, "Failed to get battle history")
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, history)
+	utils.Success(w, history)
 }

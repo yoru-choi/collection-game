@@ -192,7 +192,7 @@ func (r *ArenaRepository) RecordBattle(ctx context.Context, history *domain.Aren
 func (r *ArenaRepository) GetBattleHistory(ctx context.Context, userID int64, seasonID int, limit int) ([]domain.ArenaHistory, error) {
 	query := `
 		SELECT id, attacker_id, defender_id, attacker_team, defender_team,
-		       winner_id, battle_log, rating_change, season_id, created_at
+		       winner_id, COALESCE(battle_log, 'null'::jsonb), rating_change, season_id, created_at
 		FROM arena_history
 		WHERE (attacker_id = $1 OR defender_id = $1) AND season_id = $2
 		ORDER BY created_at DESC

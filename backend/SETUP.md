@@ -1,6 +1,56 @@
-# Collection Game Backend - 설치 및 실행 가이드
+# Collection Game Backend - 설치 및 실행 가이드 (PRD v2.0 기반)
 
-## 시작하기
+## 빠른 시작 (Docker 권장)
+
+### 필수 요구사항
+- **Docker**: 20.10+
+- **Docker Compose**: 2.0+
+
+### 1단계: Docker Compose 실행
+
+```bash
+# 전체 스택 시작 (PostgreSQL, Valkey, Backend, Nginx, Dozzle)
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f backend
+```
+
+### 2단계: 서비스 접속
+
+| 서비스 | URL | 설명 |
+|--------|-----|------|
+| **Backend API** | http://localhost/api/v1/* | REST API |
+| **Health Check** | http://localhost/health | 서버 상태 |
+| **Dozzle** | http://localhost:8888 | 로그 모니터링 |
+| **PostgreSQL** | localhost:5432 | 데이터베이스 |
+| **Valkey** | localhost:6379 | 캐시 서버 |
+
+### 3단계: 테스트
+
+```bash
+# Health Check
+curl http://localhost/health
+
+# 회원가입
+curl -X POST http://localhost/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"test@example.com","password":"Test1234!"}'
+
+# 로그인
+curl -X POST http://localhost/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"Test1234!"}'
+```
+
+---
+
+## 로컬 개발 환경 설정
+
+### 필수 요구사항
+- **Go**: 1.24.0+
+- **PostgreSQL**: 16+
+- **Valkey/Redis**: 7+ (선택)
 
 ### 1. 환경 변수 설정
 
@@ -228,7 +278,7 @@ backend/
 ├── go.mod
 ├── go.sum
 ├── Makefile
-├── API.md                       # API 문서
+├── API_V1.md                    # API 문서
 ├── PRD.md                       # 제품 요구사항 명세
 └── README.md
 ```
@@ -258,7 +308,7 @@ backend/
 
 ## 추가 자료
 
-- [API 문서](API.md)
+- [API 문서](API_V1.md)
 - [PRD (제품 요구사항 명세)](PRD.md)
 
 ## 기술 스택

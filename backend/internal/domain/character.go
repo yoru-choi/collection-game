@@ -66,10 +66,46 @@ type UserCharacter struct {
 	ObtainedAt  time.Time `json:"obtained_at" db:"obtained_at"`
 }
 
+// PartyMember represents a user-selected party slot
+type PartyMember struct {
+	UserID          int64 `json:"user_id" db:"user_id"`
+	SlotIndex       int   `json:"slot_index" db:"slot_index"`
+	UserCharacterID int64 `json:"user_character_id" db:"user_character_id"`
+}
+
 // CharacterDetail combines Character and UserCharacter info
 type CharacterDetail struct {
-	UserCharacter
-	Character
+	// User character info (from user_characters table)
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	CharacterID int64     `json:"character_id"` // references Character.ID
+	Level       int       `json:"level"`
+	Exp         int64     `json:"exp"`
+	CurrentHP   int       `json:"current_hp"`
+	CurrentATK  int       `json:"current_atk"`
+	CurrentDEF  int       `json:"current_def"`
+	CurrentSPD  int       `json:"current_spd"`
+	CritRate    float64   `json:"crit_rate"`
+	CritDamage  float64   `json:"crit_damage"`
+	Accuracy    float64   `json:"accuracy"`
+	Resistance  float64   `json:"resistance"`
+	Skill1Level int       `json:"skill_1_level"`
+	Skill2Level int       `json:"skill_2_level"`
+	Skill3Level int       `json:"skill_3_level"`
+	Skill4Level int       `json:"skill_4_level"`
+	Awakened    bool      `json:"awakened"`
+	ObtainedAt  time.Time `json:"obtained_at"`
+
+	// Base character info (from characters table)
+	Name     string  `json:"character_name"`
+	Grade    int     `json:"grade"`
+	Element  Element `json:"element"`
+	Class    Class   `json:"class"`
+	BaseHP   int     `json:"base_hp"`
+	BaseATK  int     `json:"base_atk"`
+	BaseDEF  int     `json:"base_def"`
+	BaseSPD  int     `json:"base_spd"`
+	ImageURL string  `json:"image_url"`
 }
 
 // GetMaxLevel returns the maximum level based on grade

@@ -17,6 +17,12 @@ type SummonResult struct {
 	IsNew       bool       `json:"is_new"` // First time obtaining this character
 }
 
+// SummonBatchResult represents multiple summon results
+type SummonBatchResult struct {
+	Results           []SummonResult `json:"results"`
+	RemainingCrystals int64          `json:"remaining_crystals"`
+}
+
 // SummonHistory tracks user's summon history
 type SummonHistory struct {
 	ID          int64      `json:"id" db:"id"`
@@ -46,6 +52,6 @@ var PremiumGachaRates = map[int]float64{
 
 // Summon costs
 const (
-	NormalSummonCost  = 100 // Gold cost
+	NormalSummonCost  = 100 // Crystal cost
 	PremiumSummonCost = 300 // Crystal cost
 )

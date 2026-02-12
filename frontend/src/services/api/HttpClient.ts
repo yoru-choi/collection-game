@@ -53,16 +53,21 @@ export class HttpClient {
           try {
             // Refresh Token은 HttpOnly Cookie로 자동 전송됨 (withCredentials: true)
             const response = await this.client.post('/auth/refresh', {});
-            const { authToken } = response.data.data;
+            const data = response.data.data || {};
+            const accessToken = data.authToken || data.access_token;
+
+            if (!accessToken) {
+              throw new Error('missing access token from refresh');
+            }
 
             // Access Token은 메모리에만 저장
-            this.setAccessToken(authToken);
+            this.setAccessToken(accessToken);
 
-            this.onRefreshed(authToken);
+            this.onRefreshed(accessToken);
             this.refreshSubscribers = [];
             this.isRefreshing = false;
 
-            originalRequest.headers.Authorization = `Bearer ${authToken}`;
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
             return this.client(originalRequest);
           } catch (refreshError) {
             this.isRefreshing = false;

@@ -1,16 +1,25 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, COLORS, Grade } from '@/utils/Constants';
+import { SCENE_KEYS, COLORS, UI } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 import { GameDataStore } from '@/store/GameDataStore';
-import { UserCharacter } from '@/types';
+import { UserCharacter, SummonResult, Character } from '@/types';
 import { getGradeColor, getGradeStars } from '@/utils/Helpers';
+import { getMonsterImageKey } from '@/utils/monsterImages';
+import { characterService } from '@/services/CharacterService';
+import { userService } from '@/services/UserService';
 
 export class SummonScene extends Phaser.Scene {
   private gameData!: GameDataStore;
   private summonedCharacters: UserCharacter[] = [];
   private isAnimating: boolean = false;
+  private currencyText?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: SCENE_KEYS.SUMMON });
+  }
+
+  private colorToCss(color: number): string {
+    return Phaser.Display.Color.IntegerToColor(color).rgba;
   }
 
   create(): void {
@@ -22,13 +31,46 @@ export class SummonScene extends Phaser.Scene {
     // Background with magical effect
     this.createBackground(width, height);
 
-    // Title
-    const title = this.add.text(width / 2, 60, 'Summon Portal', {
-      fontSize: '42px',
-      color: '#ffffff',
+    // Title with glow
+    const titleGlow = this.add.graphics();
+    titleGlow.fillStyle(COLORS.PRIMARY_LIGHT, 0.3);
+    titleGlow.fillCircle(width / 2, 60, 120);
+    
+    const title = this.add.text(width / 2, 60, '✨ Summon Portal ✨', {
+      fontFamily: UI.FONTS.TITLE,
+      fontSize: '48px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
+      shadow: {
+        offsetX: 3,
+        offsetY: 3,
+        color: this.colorToCss(COLORS.PRIMARY_DARK),
+        blur: 10,
+        stroke: true,
+        fill: true,
+      },
     });
     title.setOrigin(0.5);
+    
+    // Title pulse animation
+    this.tweens.add({
+      targets: title,
+      scaleX: 1.05,
+      scaleY: 1.05,
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    
+    // Rotating glow effect
+    this.tweens.add({
+      targets: titleGlow,
+      alpha: 0.5,
+      duration: 2000,
+      yoyo: true,
+      repeat: -1,
+    });
 
     // Currency display
     this.createCurrencyDisplay(width);
@@ -44,38 +86,94 @@ export class SummonScene extends Phaser.Scene {
 
     // Summon result area
     this.createResultArea(width, height);
+
+    addSceneFrame(this);
   }
 
   private createBackground(width: number, height: number): void {
+    // Multi-layer gradient background
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x0f0f2e, 0x0f0f2e, 0x1a1a4e, 0x1a1a4e, 1);
+    bg.fillGradientStyle(COLORS.BG_START, COLORS.BG_START, COLORS.PRIMARY_DARK, COLORS.PRIMARY_DARK, 1);
     bg.fillRect(0, 0, width, height);
+    
+    // Overlay gradient for depth
+    const overlay = this.add.graphics();
+    overlay.fillGradientStyle(COLORS.PRIMARY, COLORS.PRIMARY, COLORS.SECONDARY_DARK, COLORS.SECONDARY_DARK, 0.3);
+    overlay.fillRect(0, 0, width, height);
 
-    // Add some particles for magical effect
-    const particles = this.add.particles(0, 0, 'character-placeholder', {
-      speed: { min: -100, max: 100 },
-      scale: { start: 0.1, end: 0 },
+    // Magical particles - stars
+    const starParticles = this.add.particles(0, 0, 'ui-particle', {
+      x: { min: 0, max: width },
+      y: { min: 0, max: height },
+      speed: { min: 20, max: 50 },
+      scale: { start: 0.7, end: 0 },
+      alpha: { start: 0.5, end: 0 },
       blendMode: 'ADD',
-      lifespan: 2000,
-      frequency: 200,
-      emitting: true,
-      bounds: { x: 0, y: 0, w: width, h: height },
+      lifespan: 3000,
+      frequency: 450,
+      tint: [COLORS.PRIMARY_LIGHT, COLORS.SECONDARY_LIGHT, COLORS.GOLD],
     });
-    particles.setAlpha(0.3);
+    
+    // Floating orbs
+    const orbParticles = this.add.particles(0, 0, 'ui-particle', {
+      x: { min: 0, max: width },
+      y: height + 50,
+      speedY: { min: -80, max: -120 },
+      speedX: { min: -20, max: 20 },
+      scale: { start: 0.9, end: 0 },
+      alpha: { start: 0.45, end: 0 },
+      blendMode: 'ADD',
+      lifespan: 4000,
+      frequency: 700,
+      tint: [COLORS.PRIMARY, COLORS.SECONDARY, 0xa855f7],
+    });
   }
 
   private createCurrencyDisplay(width: number): void {
     const crystal = this.gameData.getPlayerData()?.crystals || 0;
-    
-    const currencyBg = this.add.graphics();
-    currencyBg.fillStyle(COLORS.PRIMARY, 0.3);
-    currencyBg.fillRoundedRect(width - 200, 10, 180, 50, 10);
 
-    this.add.text(width - 110, 35, `💎 ${crystal}`, {
-      fontSize: '24px',
-      color: '#4a90e2',
+    // Shadow
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.4);
+    shadow.fillRoundedRect(width - 194, 16, 180, 50, 12);
+
+    // Background with glassmorphism
+    const currencyBg = this.add.graphics();
+    currencyBg.fillStyle(COLORS.PRIMARY_DARK, 0.9);
+    currencyBg.fillRoundedRect(width - 200, 10, 180, 50, 12);
+    
+    // Border with glow
+    currencyBg.lineStyle(2, COLORS.PRIMARY_LIGHT, 0.8);
+    currencyBg.strokeRoundedRect(width - 200, 10, 180, 50, 12);
+    
+    // Inner highlight
+    currencyBg.fillStyle(COLORS.PRIMARY_LIGHT, 0.1);
+    currencyBg.fillRoundedRect(width - 195, 15, 170, 15, 8);
+
+    this.currencyText = this.add.text(width - 110, 35, `💎 ${crystal}`, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '26px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
+      shadow: {
+        offsetX: 2,
+        offsetY: 2,
+        color: '#000000',
+        blur: 4,
+        fill: true,
+      },
     }).setOrigin(0.5);
+    
+    // Pulse animation
+    this.tweens.add({
+      targets: this.currencyText,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   private createSummonButtons(width: number, height: number): void {
@@ -97,8 +195,8 @@ export class SummonScene extends Phaser.Scene {
       width / 2 - 200,
       centerY + 120,
       'Normal Summon x10',
-      '900 💎',
-      '10+1 Free!',
+      '1000 💎',
+      '10+1 bonus',
       COLORS.SECONDARY,
       () => this.performSummon('normal', 10)
     );
@@ -119,8 +217,8 @@ export class SummonScene extends Phaser.Scene {
       width / 2 + 200,
       centerY + 120,
       'Premium Summon x10',
-      '2700 💎',
-      'Guaranteed ⭐⭐⭐⭐+',
+      '3000 💎',
+      '10+1 bonus',
       COLORS.DANGER,
       () => this.performSummon('premium', 10)
     );
@@ -137,44 +235,125 @@ export class SummonScene extends Phaser.Scene {
   ): void {
     const button = this.add.container(x, y);
 
-    // Button background
-    const bg = this.add.rectangle(0, 0, 350, 100, color, 0.9);
-    bg.setStrokeStyle(3, COLORS.LIGHT);
+    // Shadow layer
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.5);
+    shadow.fillRoundedRect(-178, -48, 356, 106, 15);
+
+    // Button background with gradient
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(
+      color,
+      color,
+      Phaser.Display.Color.ValueToColor(color).darken(40).color,
+      Phaser.Display.Color.ValueToColor(color).darken(40).color,
+      1
+    );
+    bg.fillRoundedRect(-175, -50, 350, 100, 12);
+    
+    // Border with glow
+    bg.lineStyle(3, COLORS.LIGHT, 0.8);
+    bg.strokeRoundedRect(-175, -50, 350, 100, 12);
+    
+    // Inner highlight
+    bg.fillStyle(0xffffff, 0.15);
+    bg.fillRoundedRect(-170, -45, 340, 25, 10);
+
+    // Sparkle particles
+    const sparkles = this.add.particles(0, 0, 'ui-particle', {
+      x: { min: -175, max: 175 },
+      y: { min: -50, max: 50 },
+      scale: { start: 0.7, end: 0 },
+      alpha: { start: 0.5, end: 0 },
+      blendMode: 'ADD',
+      lifespan: 1500,
+      frequency: 400,
+      tint: [COLORS.PRIMARY_LIGHT, COLORS.SECONDARY_LIGHT, COLORS.GOLD],
+    });
+    sparkles.setPosition(0, 0);
 
     // Title
-    const titleText = this.add.text(0, -25, title, {
-      fontSize: '22px',
-      color: '#ffffff',
+    const titleText = this.add.text(0, -28, title, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '24px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
+      shadow: {
+        offsetX: 2,
+        offsetY: 2,
+        color: '#000000',
+        blur: 5,
+        fill: true,
+      },
     });
     titleText.setOrigin(0.5);
 
     // Cost
     const costText = this.add.text(0, 5, cost, {
-      fontSize: '20px',
-      color: '#4a90e2',
+      fontFamily: UI.FONTS.UI,
+      fontSize: '22px',
+      color: this.colorToCss(COLORS.GOLD),
+      fontStyle: 'bold',
+      shadow: {
+        offsetX: 1,
+        offsetY: 1,
+        color: '#000000',
+        blur: 3,
+        fill: true,
+      },
     });
     costText.setOrigin(0.5);
 
     // Subtitle
-    const subtitleText = this.add.text(0, 30, subtitle, {
-      fontSize: '14px',
-      color: '#f39c12',
+    const subtitleText = this.add.text(0, 32, subtitle, {
+      fontFamily: UI.FONTS.BODY,
+      fontSize: '16px',
+      color: this.colorToCss(COLORS.TEXT_SECONDARY),
+      fontStyle: 'bold',
     });
     subtitleText.setOrigin(0.5);
 
-    button.add([bg, titleText, costText, subtitleText]);
+    button.add([shadow, bg, sparkles, titleText, costText, subtitleText]);
     button.setSize(350, 100);
     button.setInteractive({ useHandCursor: true });
+
+    // Floating animation
+    this.tweens.add({
+      targets: button,
+      y: y - 5,
+      duration: 2000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
 
     // Hover effects
     button.on('pointerover', () => {
       this.tweens.add({
         targets: button,
-        scaleX: 1.05,
-        scaleY: 1.05,
+        scaleX: 1.08,
+        scaleY: 1.08,
         duration: 200,
+        ease: 'Back.easeOut',
       });
+      
+      // Increase sparkle frequency
+      sparkles.setFrequency(200);
+      
+      // Enhance glow
+      bg.clear();
+      bg.fillGradientStyle(
+        Phaser.Display.Color.ValueToColor(color).lighten(20).color,
+        Phaser.Display.Color.ValueToColor(color).lighten(20).color,
+        Phaser.Display.Color.ValueToColor(color).darken(20).color,
+        Phaser.Display.Color.ValueToColor(color).darken(20).color,
+        1
+      );
+      bg.fillRoundedRect(-175, -50, 350, 100, 12);
+      bg.lineStyle(4, COLORS.LIGHT, 1);
+      bg.strokeRoundedRect(-175, -50, 350, 100, 12);
+      bg.fillStyle(0xffffff, 0.25);
+      bg.fillRoundedRect(-170, -45, 340, 25, 10);
     });
 
     button.on('pointerout', () => {
@@ -184,9 +363,38 @@ export class SummonScene extends Phaser.Scene {
         scaleY: 1,
         duration: 200,
       });
+      
+      // Reset sparkle frequency
+      sparkles.setFrequency(400);
+      
+      // Reset glow
+      bg.clear();
+      bg.fillGradientStyle(
+        color,
+        color,
+        Phaser.Display.Color.ValueToColor(color).darken(40).color,
+        Phaser.Display.Color.ValueToColor(color).darken(40).color,
+        1
+      );
+      bg.fillRoundedRect(-175, -50, 350, 100, 12);
+      bg.lineStyle(3, COLORS.LIGHT, 0.8);
+      bg.strokeRoundedRect(-175, -50, 350, 100, 12);
+      bg.fillStyle(0xffffff, 0.15);
+      bg.fillRoundedRect(-170, -45, 340, 25, 10);
     });
 
-    button.on('pointerdown', callback);
+    button.on('pointerdown', () => {
+      // Flash effect
+      this.tweens.add({
+        targets: button,
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 100,
+        yoyo: true,
+      });
+      
+      callback();
+    });
   }
 
   private createRatesButton(width: number, height: number): void {
@@ -196,8 +404,9 @@ export class SummonScene extends Phaser.Scene {
     bg.setStrokeStyle(2, COLORS.LIGHT);
 
     const text = this.add.text(0, 0, 'View Rates', {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
     });
     text.setOrigin(0.5);
 
@@ -211,19 +420,63 @@ export class SummonScene extends Phaser.Scene {
   }
 
   private createResultArea(width: number, height: number): void {
-    // This area will be populated after summoning
+    const panelX = width - 360;
+    const panelY = height / 2 + 20;
+      const panelWidth = 540;
+    const panelHeight = height - 180;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(COLORS.DARKER, 0.9);
+    panel.fillRoundedRect(panelX - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 18);
+    panel.lineStyle(2, COLORS.GOLD, 0.7);
+    panel.strokeRoundedRect(panelX - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 18);
+
+    const header = this.add.graphics();
+    header.fillStyle(COLORS.BG_ACCENT, 0.6);
+    header.fillRoundedRect(panelX - panelWidth / 2 + 16, panelY - panelHeight / 2 + 16, panelWidth - 32, 50, 12);
+    header.lineStyle(1, COLORS.PRIMARY_LIGHT, 0.5);
+    header.strokeRoundedRect(panelX - panelWidth / 2 + 16, panelY - panelHeight / 2 + 16, panelWidth - 32, 50, 12);
+
+    this.add.text(panelX, panelY - panelHeight / 2 + 42, 'Summon Results', {
+      fontFamily: UI.FONTS.TITLE,
+      fontSize: '24px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
   }
 
   private async performSummon(type: 'normal' | 'premium', count: number): Promise<void> {
     if (this.isAnimating) return;
 
     console.log(`Performing ${type} summon x${count}`);
-    
+
     this.isAnimating = true;
 
-    // TODO: Call API to perform actual summon
-    // For now, generate mock characters
-    this.summonedCharacters = this.generateMockCharacters(count, type);
+    try {
+      const results = await characterService.summon(type, count);
+
+      this.summonedCharacters = results.map((result, index) =>
+        this.mapSummonResult(result, index)
+      );
+
+      const profile = await userService.getProfile();
+      if (profile) {
+        this.gameData.setPlayerData(profile);
+        if (this.currencyText) {
+          this.currencyText.setText(`💎 ${profile.crystals}`);
+        }
+      }
+
+      const characters = await characterService.getCharacterList();
+      if (characters.length > 0) {
+        this.gameData.setUserCharacters(characters);
+      }
+    } catch (error) {
+      this.showToast('Summon failed. Check crystals.');
+      console.error('Summon error:', error);
+      this.isAnimating = false;
+      return;
+    }
 
     // Play summon animation
     await this.playSummonAnimation();
@@ -234,68 +487,49 @@ export class SummonScene extends Phaser.Scene {
     this.isAnimating = false;
   }
 
-  private generateMockCharacters(count: number, type: 'normal' | 'premium'): UserCharacter[] {
-    const mockChars: UserCharacter[] = [];
-    
-    for (let i = 0; i < count; i++) {
-      // Simplified gacha simulation
-      let grade: Grade;
-      const roll = Math.random();
-      
-      if (type === 'premium') {
-        if (roll < 0.03) grade = Grade.FIVE_STAR;
-        else if (roll < 0.12) grade = Grade.FOUR_STAR;
-        else if (roll < 0.35) grade = Grade.THREE_STAR;
-        else if (roll < 0.65) grade = Grade.TWO_STAR;
-        else grade = Grade.ONE_STAR;
-      } else {
-        if (roll < 0.01) grade = Grade.FIVE_STAR;
-        else if (roll < 0.05) grade = Grade.FOUR_STAR;
-        else if (roll < 0.20) grade = Grade.THREE_STAR;
-        else if (roll < 0.50) grade = Grade.TWO_STAR;
-        else grade = Grade.ONE_STAR;
-      }
+  private mapSummonResult(result: SummonResult, index: number): UserCharacter {
+    const character = result.character as Character;
+    const now = new Date().toISOString();
+    return {
+      id: `summon-${Date.now()}-${index}`,
+      userId: 'user-unknown',
+      characterId: String(result.character_id),
+      character,
+      level: 1,
+      exp: 0,
+      currentHp: character.baseHp,
+      currentAtk: character.baseAtk,
+      currentDef: character.baseDef,
+      currentSpd: character.baseSpd,
+      currentCrt: 5,
+      currentCrtDmg: 50,
+      currentAcc: 0,
+      currentRes: 0,
+      skill1Level: 1,
+      skill2Level: 1,
+      skill3Level: 1,
+      skill4Level: 1,
+      awakened: 0,
+      obtainedAt: now,
+    };
+  }
 
-      mockChars.push({
-        id: `char-${Date.now()}-${i}`,
-        userId: 'user-1',
-        characterId: `base-char-${i}`,
-        character: {
-          id: `base-char-${i}`,
-          name: `Character ${i + 1}`,
-          grade,
-          element: ['fire', 'water', 'wind', 'light', 'dark'][Math.floor(Math.random() * 5)] as any,
-          class: ['warrior', 'mage', 'healer'][Math.floor(Math.random() * 3)] as any,
-          baseHp: 500,
-          baseAtk: 100,
-          baseDef: 50,
-          baseSpd: 100,
-          skill1Id: 'skill-1',
-          skill2Id: 'skill-2',
-          skill3Id: 'skill-3',
-          skill4Id: 'skill-4',
-          imageUrl: '',
-        },
-        level: 1,
-        exp: 0,
-        currentHp: 500,
-        currentAtk: 100,
-        currentDef: 50,
-        currentSpd: 100,
-        currentCrt: 15,
-        currentCrtDmg: 150,
-        currentAcc: 0,
-        currentRes: 0,
-        skill1Level: 1,
-        skill2Level: 1,
-        skill3Level: 1,
-        skill4Level: 1,
-        awakened: 0,
-        obtainedAt: new Date().toISOString(),
-      });
-    }
-
-    return mockChars;
+  private showToast(message: string): void {
+    const width = this.cameras.main.width;
+    const toast = this.add.text(width / 2, 520, message, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '16px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      backgroundColor: '#000000',
+      padding: { left: 10, right: 10, top: 6, bottom: 6 },
+    });
+    toast.setOrigin(0.5);
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      duration: 1200,
+      onComplete: () => toast.destroy(),
+    });
   }
 
   private playSummonAnimation(): Promise<void> {
@@ -305,7 +539,7 @@ export class SummonScene extends Phaser.Scene {
 
       // Create a magical circle
       const circle = this.add.circle(width / 2, height / 2, 100, COLORS.PRIMARY, 0.5);
-      
+
       this.tweens.add({
         targets: circle,
         scaleX: 3,
@@ -352,8 +586,9 @@ export class SummonScene extends Phaser.Scene {
 
     // Title
     this.add.text(width / 2, height / 2 - 260, 'Summon Results!', {
+      fontFamily: UI.FONTS.TITLE,
       fontSize: '32px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
@@ -361,7 +596,7 @@ export class SummonScene extends Phaser.Scene {
     const cardSize = 140;
     const spacing = 20;
     const cols = 5;
-    
+
     this.summonedCharacters.forEach((char, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
@@ -376,8 +611,9 @@ export class SummonScene extends Phaser.Scene {
     const closeBg = this.add.rectangle(0, 0, 200, 50, COLORS.SUCCESS);
     closeBg.setStrokeStyle(2, COLORS.LIGHT);
     const closeText = this.add.text(0, 0, 'Confirm', {
+      fontFamily: UI.FONTS.UI,
       fontSize: '20px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     closeText.setOrigin(0.5);
@@ -401,9 +637,10 @@ export class SummonScene extends Phaser.Scene {
     const bg = this.add.rectangle(0, 0, size, size, COLORS.SECONDARY, 0.9);
     bg.setStrokeStyle(3, getGradeColor(character.character.grade));
 
-    // Character sprite
-    const sprite = this.add.sprite(0, -20, 'character-placeholder');
-    sprite.setScale(0.8);
+    // Character sprite with deterministic image
+    const spriteKey = getMonsterImageKey(character);
+    const sprite = this.add.sprite(0, -20, spriteKey);
+    sprite.setDisplaySize(size * 0.75, size * 0.75);
 
     // Stars
     const stars = this.add.text(0, 40, getGradeStars(character.character.grade), {
@@ -413,8 +650,11 @@ export class SummonScene extends Phaser.Scene {
 
     // Name
     const name = this.add.text(0, 60, character.character.name, {
+      fontFamily: UI.FONTS.UI,
       fontSize: '12px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      wordWrap: { width: size - 12 },
+      align: 'center',
     });
     name.setOrigin(0.5);
 
@@ -443,8 +683,9 @@ export class SummonScene extends Phaser.Scene {
     bg.setStrokeStyle(2, COLORS.LIGHT);
 
     const text = this.add.text(0, 0, '← Back', {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
     });
     text.setOrigin(0.5);
 

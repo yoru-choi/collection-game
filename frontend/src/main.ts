@@ -8,6 +8,18 @@ window.addEventListener('load', () => {
   try {
     const game = new Phaser.Game(config);
     console.log('Main: Phaser game instance created:', game);
+
+    const orientationOverlay = document.getElementById('orientation-lock');
+    const updateOrientationLock = () => {
+      if (!orientationOverlay) return;
+      const isPortrait = window.innerHeight > window.innerWidth;
+      const isMobile = window.innerWidth < 1024;
+      orientationOverlay.classList.toggle('active', isMobile && isPortrait);
+    };
+
+    updateOrientationLock();
+    window.addEventListener('resize', updateOrientationLock);
+    window.addEventListener('orientationchange', updateOrientationLock);
     
     // Global error handler
     window.addEventListener('error', (event) => {

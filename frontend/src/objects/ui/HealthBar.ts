@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { COLORS } from '@/utils/Constants';
 
 export class HealthBar extends Phaser.GameObjects.Container {
   private background: Phaser.GameObjects.Graphics;
@@ -22,8 +23,10 @@ export class HealthBar extends Phaser.GameObjects.Container {
 
     // Background
     this.background = scene.add.graphics();
-    this.background.fillStyle(0x34495e);
+    this.background.fillStyle(COLORS.DARK, 0.9);
     this.background.fillRoundedRect(0, 0, width, height, height / 2);
+    this.background.lineStyle(1, COLORS.GOLD, 0.6);
+    this.background.strokeRoundedRect(0, 0, width, height, height / 2);
 
     // Health bar
     this.bar = scene.add.graphics();
@@ -57,11 +60,11 @@ export class HealthBar extends Phaser.GameObjects.Container {
     this.bar.clear();
     
     // Color changes based on health percentage
-    let color = 0x2ecc71; // Green
+    let color = COLORS.SUCCESS; // Green
     if (this.currentValue < 0.3) {
-      color = 0xe74c3c; // Red
+      color = COLORS.DANGER; // Red
     } else if (this.currentValue < 0.6) {
-      color = 0xf39c12; // Orange
+      color = COLORS.WARNING; // Orange
     }
     
     this.bar.fillStyle(color);

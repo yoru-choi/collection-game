@@ -4,9 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="description" content="캐릭터 수집형 RPG 게임 - Windows, iPad, 모바일 모두 지원" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#18150f" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&family=Noto+Serif+KR:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
     <title>Collection RPG</title>
     <style>
+      :root {
+        --gold: #d4af37;
+        --crystal: #3fb6c6;
+        --ink: #f4efe3;
+        --ink-muted: #c8c1b3;
+        --bg-1: #18150f;
+        --bg-2: #27231b;
+        --bg-3: #332c22;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -14,9 +30,25 @@
       }
       body {
         overflow: hidden;
-        background-color: #000;
+        background: #0a0a0a;
+        color: var(--ink);
+        font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
         touch-action: manipulation; /* 모바일 터치 최적화 */
         -webkit-tap-highlight-color: transparent; /* iOS 탭 하이라이트 제거 */
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(255, 255, 255, 0.03) 0,
+          rgba(255, 255, 255, 0.03) 1px,
+          transparent 1px,
+          transparent 6px
+        );
+        pointer-events: none;
+        opacity: 0.35;
       }
       #game-container {
         display: flex;
@@ -24,6 +56,13 @@
         align-items: center;
         width: 100vw;
         height: 100vh;
+        position: relative;
+        background: #050505;
+      }
+      #game-container canvas {
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 0 6px rgba(0, 0, 0, 0.9),
+          0 0 0 8px rgba(255, 255, 255, 0.06);
+        border-radius: 22px;
       }
       /* 모바일 주소창 숨김 대응 */
       @media screen and (max-width: 767px) {
@@ -31,10 +70,51 @@
           height: 100dvh; /* Dynamic viewport height */
         }
       }
+
+      #orientation-lock {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: radial-gradient(400px 200px at 50% 40%, rgba(63, 182, 198, 0.2), transparent 60%),
+          linear-gradient(160deg, #0a0a0a, #121212);
+        color: var(--ink);
+        z-index: 9999;
+      }
+      #orientation-lock.active {
+        display: flex;
+      }
+      #orientation-lock .panel {
+        padding: 28px 32px;
+        border-radius: 16px;
+        border: 2px solid rgba(212, 175, 55, 0.7);
+        background: rgba(10, 10, 10, 0.85);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        max-width: 320px;
+      }
+      #orientation-lock .panel h1 {
+        font-family: "Cinzel", "Noto Serif KR", serif;
+        font-size: 22px;
+        margin-bottom: 10px;
+        color: var(--gold);
+      }
+      #orientation-lock .panel p {
+        font-size: 14px;
+        color: var(--ink-muted);
+        line-height: 1.5;
+      }
     </style>
   </head>
   <body>
     <div id="game-container"></div>
+    <div id="orientation-lock">
+      <div class="panel">
+        <h1>Rotate Device</h1>
+        <p>모바일에서는 가로 모드로 플레이해 주세요.</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts" onerror="console.error('Failed to load main.ts')"></script>
     <noscript>
       <div style="color: white; text-align: center; padding: 50px;">

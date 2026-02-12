@@ -1,5 +1,7 @@
+import axios from 'axios';
 import { httpClient } from './api/HttpClient';
 import { GAME_CONFIG } from '@/utils/Constants';
+import { GameDataStore } from '@/store/GameDataStore';
 import {
   LoginRequest,
   RegisterRequest,
@@ -8,16 +10,21 @@ import {
 } from '@/types';
 
 export class AuthService {
-  async login(email: string, password: string): Promise<AuthResponse> {
+  async login(username: string, password: string): Promise<AuthResponse> {
     try {
       const response = await httpClient.post<ApiResponse<AuthResponse>>(
         '/auth/login',
-        { email, password } as LoginRequest
+        { username, password } as LoginRequest
       );
 
       if (response.success && response.data) {
         // Access Token\uc740 \uba54\ubaa8\ub9ac\uc5d0\ub9cc \uc800\uc7a5, Refresh Token\uc740 HttpOnly Cookie\ub85c \uc11c\ubc84\uac00 \uad00\ub9ac
-        httpClient.setAccessToken(response.data.authToken);
+        const data = response.data as any;
+        const accessToken = data.authToken || data.access_token;
+        if (!accessToken) {
+          throw new Error('Missing access token');
+        }
+        httpClient.setAccessToken(accessToken);
         
         // \uc790\ub3d9 \ud1a0\ud070 \uac31\uc2e0 \ud0c0\uc774\uba38 \uc2dc\uc791
         this.startTokenRefreshTimer();
@@ -28,6 +35,13 @@ export class AuthService {
       }
     } catch (error) {
       console.error('Login error:', error);
+      if (axios.isAxiosError(error)) {
+        const message = (error.response?.data as { error?: string; message?: string })?.error
+          || (error.response?.data as { error?: string; message?: string })?.message;
+        if (message) {
+          throw new Error(message);
+        }
+      }
       throw error;
     }
   }
@@ -45,7 +59,12 @@ export class AuthService {
 
       if (response.success && response.data) {
         // Access Token \uba54\ubaa8\ub9ac \uc800\uc7a5
-        httpClient.setAccessToken(response.data.authToken);
+        const data = response.data as any;
+        const accessToken = data.authToken || data.access_token;
+        if (!accessToken) {
+          throw new Error('Missing access token');
+        }
+        httpClient.setAccessToken(accessToken);
         this.startTokenRefreshTimer();
         return response.data;
       } else {
@@ -53,6 +72,13 @@ export class AuthService {
       }
     } catch (error) {
       console.error('Register error:', error);
+      if (axios.isAxiosError(error)) {
+        const message = (error.response?.data as { error?: string; message?: string })?.error
+          || (error.response?.data as { error?: string; message?: string })?.message;
+        if (message) {
+          throw new Error(message);
+        }
+      }
       throw error;
     }
   }
@@ -67,6 +93,7 @@ export class AuthService {
       // \ud074\ub77c\uc774\uc5b8\ud2b8 Access Token \uc0ad\uc81c
       httpClient.clearAccessToken();
       this.stopTokenRefreshTimer();
+        GameDataStore.getInstance().clearAll();
     }
   }
 
@@ -76,7 +103,11 @@ export class AuthService {
       const response = await httpClient.post<ApiResponse<{ authToken: string }>>('/auth/refresh', {});
 
       if (response.success && response.data) {
-        httpClient.setAccessToken(response.data.authToken);
+        const data = response.data as any;
+        const accessToken = data.authToken || data.access_token;
+        if (accessToken) {
+          httpClient.setAccessToken(accessToken);
+        }
       }
     } catch (error) {
       console.error('Token refresh error:', error);

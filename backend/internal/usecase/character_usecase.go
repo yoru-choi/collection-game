@@ -11,8 +11,11 @@ import (
 type CharacterUseCase interface {
 	GetUserCharacters(ctx context.Context, userID int64) ([]*domain.UserCharacter, error)
 	GetUserCharacterDetail(ctx context.Context, userCharacterID int64) (*domain.CharacterDetail, error)
-	LevelUp(ctx context.Context, userCharacterID int64, expCrystals int) error
-	Awaken(ctx context.Context, userCharacterID int64) error
+	GetUserCharacterDetails(ctx context.Context, userID int64) ([]*domain.CharacterDetail, error)
+	LevelUp(ctx context.Context, userCharacterID int64, expCrystals int) (*domain.CharacterDetail, error)
+	Awaken(ctx context.Context, userCharacterID int64) (*domain.CharacterDetail, error)
+	GetUserParty(ctx context.Context, userID int64) ([]*domain.PartyMember, error)
+	SetUserParty(ctx context.Context, userID int64, members []*domain.PartyMember) error
 }
 
 type characterUseCase struct {
@@ -35,26 +38,36 @@ func (uc *characterUseCase) GetUserCharacterDetail(ctx context.Context, userChar
 	return uc.charRepo.GetUserCharacterDetail(ctx, userCharacterID)
 }
 
-func (uc *characterUseCase) LevelUp(ctx context.Context, userCharacterID int64, expCrystals int) error {
+func (uc *characterUseCase) GetUserCharacterDetails(ctx context.Context, userID int64) ([]*domain.CharacterDetail, error) {
+	return uc.charRepo.GetUserCharacterDetailsByUser(ctx, userID)
+}
+
+func (uc *characterUseCase) LevelUp(ctx context.Context, userCharacterID int64, expCrystals int) (*domain.CharacterDetail, error) {
 	// Get user character with detail
 	detail, err := uc.charRepo.GetUserCharacterDetail(ctx, userCharacterID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Get user to verify ownership and resources
 	user, err := uc.userRepo.GetByID(ctx, detail.UserID)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// Deduct gold (if using gold for level up materials)
+	goldCost := int64(expCrystals * 100)
+	if user.Gold < goldCost {
+		return nil, fmt.Errorf("insufficient gold")
 	}
 
 	// Calculate exp to add (simple: 100 exp per crystal)
 	expToAdd := int64(expCrystals * 100)
 
 	// Check max level
-	maxLevel := domain.GetMaxLevel(detail.Character.Grade)
+	maxLevel := domain.GetMaxLevel(detail.Grade)
 	if detail.Level >= maxLevel {
-		return fmt.Errorf("character is already at max level")
+		return nil, fmt.Errorf("character is already at max level")
 	}
 
 	// Add exp
@@ -79,61 +92,88 @@ func (uc *characterUseCase) LevelUp(ctx context.Context, userCharacterID int64, 
 	if newLevel != detail.Level {
 		detail.Level = newLevel
 		detail.Exp = remainingExp
-		detail.UserCharacter.CalculateStats(&detail.Character)
+
+		// Recalculate stats based on new level
+		levelMultiplier := 1.0 + float64(detail.Level-1)*0.05
+		detail.CurrentHP = int(float64(detail.BaseHP) * levelMultiplier)
+		detail.CurrentATK = int(float64(detail.BaseATK) * levelMultiplier)
+		detail.CurrentDEF = int(float64(detail.BaseDEF) * levelMultiplier)
+		detail.CurrentSPD = int(float64(detail.BaseSPD) * levelMultiplier)
+	}
+
+	// Create UserCharacter for update
+	userChar := &domain.UserCharacter{
+		ID:          detail.ID,
+		UserID:      detail.UserID,
+		CharacterID: detail.CharacterID,
+		Level:       detail.Level,
+		Exp:         detail.Exp,
+		CurrentHP:   detail.CurrentHP,
+		CurrentATK:  detail.CurrentATK,
+		CurrentDEF:  detail.CurrentDEF,
+		CurrentSPD:  detail.CurrentSPD,
+		CritRate:    detail.CritRate,
+		CritDamage:  detail.CritDamage,
+		Accuracy:    detail.Accuracy,
+		Resistance:  detail.Resistance,
+		Skill1Level: detail.Skill1Level,
+		Skill2Level: detail.Skill2Level,
+		Skill3Level: detail.Skill3Level,
+		Skill4Level: detail.Skill4Level,
+		Awakened:    detail.Awakened,
+		ObtainedAt:  detail.ObtainedAt,
 	}
 
 	// Update character
-	if err := uc.charRepo.UpdateUserCharacter(ctx, &detail.UserCharacter); err != nil {
-		return err
+	if err := uc.charRepo.UpdateUserCharacter(ctx, userChar); err != nil {
+		return nil, err
 	}
 
-	// Deduct gold (if using gold for level up materials)
-	goldCost := int64(expCrystals * 100)
-	if user.Gold < goldCost {
-		return fmt.Errorf("insufficient gold")
+	if err := uc.userRepo.UpdateCurrency(ctx, user.ID, 0, -goldCost); err != nil {
+		return nil, err
 	}
 
-	return uc.userRepo.UpdateCurrency(ctx, user.ID, 0, -goldCost)
+	return detail, nil
 }
 
-func (uc *characterUseCase) Awaken(ctx context.Context, userCharacterID int64) error {
+func (uc *characterUseCase) Awaken(ctx context.Context, userCharacterID int64) (*domain.CharacterDetail, error) {
 	// Get user character with detail
 	detail, err := uc.charRepo.GetUserCharacterDetail(ctx, userCharacterID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check if already awakened
 	if detail.Awakened {
-		return fmt.Errorf("character is already awakened")
+		return nil, fmt.Errorf("character is already awakened")
 	}
 
 	// Check if character is at max level for current grade
-	maxLevel := domain.GetMaxLevel(detail.Character.Grade)
+	maxLevel := domain.GetMaxLevel(detail.Grade)
 	if detail.Level < maxLevel {
-		return fmt.Errorf("character must be at max level (%d) to awaken", maxLevel)
+		return nil, fmt.Errorf("character must be at max level (%d) to awaken", maxLevel)
 	}
 
 	// Check if grade can be upgraded (max grade is 5)
-	if detail.Character.Grade >= 5 {
-		return fmt.Errorf("character is already at maximum grade")
+	if detail.Grade >= 5 {
+		return nil, fmt.Errorf("character is already at maximum grade")
 	}
 
 	// Get user to check resources
 	user, err := uc.userRepo.GetByID(ctx, detail.UserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Calculate awakening cost (simplified: crystals based on grade)
-	crystalCost := int64(detail.Character.Grade * 1000)
-	goldCost := int64(detail.Character.Grade * 50000)
+	crystalCost := int64(detail.Grade * 1000)
+	goldCost := int64(detail.Grade * 50000)
 
 	if user.Crystals < crystalCost {
-		return fmt.Errorf("insufficient crystals: need %d, have %d", crystalCost, user.Crystals)
+		return nil, fmt.Errorf("insufficient crystals: need %d, have %d", crystalCost, user.Crystals)
 	}
 	if user.Gold < goldCost {
-		return fmt.Errorf("insufficient gold: need %d, have %d", goldCost, user.Gold)
+		return nil, fmt.Errorf("insufficient gold: need %d, have %d", goldCost, user.Gold)
 	}
 
 	// Perform awakening
@@ -147,11 +187,46 @@ func (uc *characterUseCase) Awaken(ctx context.Context, userCharacterID int64) e
 	detail.CurrentDEF = int(float64(detail.CurrentDEF) * 1.5)
 	detail.CurrentSPD = int(float64(detail.CurrentSPD) * 1.5)
 
+	// Create UserCharacter for update
+	userChar := &domain.UserCharacter{
+		ID:          detail.ID,
+		UserID:      detail.UserID,
+		CharacterID: detail.CharacterID,
+		Level:       detail.Level,
+		Exp:         detail.Exp,
+		CurrentHP:   detail.CurrentHP,
+		CurrentATK:  detail.CurrentATK,
+		CurrentDEF:  detail.CurrentDEF,
+		CurrentSPD:  detail.CurrentSPD,
+		CritRate:    detail.CritRate,
+		CritDamage:  detail.CritDamage,
+		Accuracy:    detail.Accuracy,
+		Resistance:  detail.Resistance,
+		Skill1Level: detail.Skill1Level,
+		Skill2Level: detail.Skill2Level,
+		Skill3Level: detail.Skill3Level,
+		Skill4Level: detail.Skill4Level,
+		Awakened:    detail.Awakened,
+		ObtainedAt:  detail.ObtainedAt,
+	}
+
 	// Update character
-	if err := uc.charRepo.UpdateUserCharacter(ctx, &detail.UserCharacter); err != nil {
-		return err
+	if err := uc.charRepo.UpdateUserCharacter(ctx, userChar); err != nil {
+		return nil, err
 	}
 
 	// Deduct resources
-	return uc.userRepo.UpdateCurrency(ctx, user.ID, -crystalCost, -goldCost)
+	if err := uc.userRepo.UpdateCurrency(ctx, user.ID, -crystalCost, -goldCost); err != nil {
+		return nil, err
+	}
+
+	return detail, nil
+}
+
+func (uc *characterUseCase) GetUserParty(ctx context.Context, userID int64) ([]*domain.PartyMember, error) {
+	return uc.charRepo.GetUserParty(ctx, userID)
+}
+
+func (uc *characterUseCase) SetUserParty(ctx context.Context, userID int64, members []*domain.PartyMember) error {
+	return uc.charRepo.ReplaceUserParty(ctx, userID, members)
 }

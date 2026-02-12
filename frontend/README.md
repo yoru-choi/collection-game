@@ -43,9 +43,10 @@ Phaser 3 게임 엔진과 TypeScript를 사용한 2D 턴제 RPG 게임입니다.
 
 ```
 src/
-├── scenes/              # Phaser 씬 (화면)
+├── scenes/              # Phaser 씬 (화면) - 15개 Scene
 │   ├── BootScene.ts    # 초기 로딩
 │   ├── LoginScene.ts   # 로그인/회원가입
+│   ├── TutorialScene.ts # 튜토리얼 (PRD 1.8)
 │   ├── LobbyScene.ts   # 메인 로비
 │   ├── SummonScene.ts  # 가챠 시스템
 │   ├── CharacterListScene.ts
@@ -54,7 +55,10 @@ src/
 │   ├── ArenaScene.ts   # PvP 아레나
 │   ├── GuildScene.ts   # 길드 시스템
 │   ├── ShopScene.ts    # 상점
-│   └── ...
+│   ├── InventoryScene.ts
+│   ├── DungeonSelectScene.ts
+│   ├── SettingsScene.ts # 게임 설정
+│   └── CreditsScene.ts  # 크레딧 (PRD 1.6)
 ├── objects/            # 게임 오브젝트
 │   ├── ui/            # UI 컴포넌트
 │   │   ├── Button.ts
@@ -79,7 +83,9 @@ src/
 │   └── index.ts
 ├── utils/             # 유틸리티 함수
 │   ├── Constants.ts
-│   └── Helpers.ts
+│   ├── Helpers.ts
+│   ├── AssetConfig.ts     # OpenGameArt 에셋 관리 (PRD 1.6)
+│   └── ResponsiveUI.ts    # 반응형 UI 헬퍼 (PRD 3.2)
 ├── main.ts            # 엔트리 포인트
 └── game.ts            # Phaser 게임 설정
 ```
@@ -124,6 +130,11 @@ VITE_ENV=development
 # Feature Flags
 VITE_ENABLE_DEBUG=true
 VITE_ENABLE_MOCK_DATA=true
+
+# Asset Mode (PRD 1.6: OpenGameArt.org 에셋 관리)
+# 'hotlink' for development (fast prototyping)
+# 'local' for production (bundled assets)
+VITE_ASSETS_MODE=hotlink
 ```
 
 `.env.example` 파일을 참조하세요.
@@ -147,18 +158,29 @@ PRD 4.4.1 기준으로 구현:
   - Token Blacklist (로그아웃 시)
   - Token Rotation (재사용 방지)
   - Rate Limiting (100 req/min)
-
-자세한 내용은 [SECURITY.md](./SECURITY.md)를 참조하세요.
-
-### 구현된 기능
-
+#### 🎮 핵심 시스템
 - ✅ **인증 시스템**: JWT 기반 로그인, 회원가입, 자동 토큰 갱신
+- ✅ **튜토리얼**: 첫 10분 플레이 가이드 (PRD 1.8)
 - ✅ **로비 시스템**: 메인 메뉴, 화폐 표시, 에너지 시스템
+- ✅ **설정 시스템**: 음량, 그래픽, 게임플레이, 계정 설정
+- ✅ **크레딧**: OpenGameArt.org 에셋 출처 표시 (PRD 1.6)
+
+#### 🎲 게임 기능
 - ✅ **캐릭터 관리**: 캐릭터 목록(페이지네이션), 상세 정보, 필터링/정렬
 - ✅ **가챠 시스템**: 일반/프리미엄 소환, 애니메이션, 결과 표시
 - ✅ **던전 시스템**: 던전 목록, 입장, 전투 진행
 - ✅ **PvP 시스템**: 랭킹 조회, 공격, 방어팀 설정, 전투 기록
 - ✅ **길드 시스템**: 길드 생성/검색/가입, 멤버 관리
+- ✅ **상점 시스템**: 아이템 목록, 구매
+- ✅ **퀘스트 시스템**: 일일 퀘스트, 완료, 보상 받기
+
+#### 🛠 기술 구현
+- ✅ **API 서비스**: HTTP/WebSocket 클라이언트 with 토큰 갱신
+- ✅ **상태 관리**: 플레이어 데이터, 캐릭터, 인벤토리 관리
+- ✅ **반응형 UI**: 데스크톱/태블릿/모바일 자동 대응 (PRD 3.2, 4.2.4.1)
+- ✅ **OpenGameArt 에셋 관리**: 개발 시 핫링크, 배포 시 번들링 (PRD 1.6)
+- ✅ **성능 최적화**: 기기별 자동 품질 조정
+- ✅ **UI 컴포넌트**: 재사용 가능한 버튼, 패널, 체력바
 - ✅ **상점 시스템**: 아이템 목록, 구매
 - ✅ **퀘스트 시스템**: 일일 퀘스트, 완료, 보상 받기
 - ✅ **UI 컴포넌트**: 재사용 가능한 버튼, 패널, 체력바

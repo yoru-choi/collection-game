@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 import { GameDataStore } from '@/store/GameDataStore';
 import { AuthService } from '@/services/AuthService';
+import { MONSTER_IMAGE_KEYS, getMonsterImagePath } from '@/utils/monsterImages';
 
 export class BootScene extends Phaser.Scene {
   private loadingText!: Phaser.GameObjects.Text;
@@ -82,6 +84,10 @@ export class BootScene extends Phaser.Scene {
     // Load audio
     // this.load.audio('bgm', 'assets/audio/bgm.mp3');
     
+    MONSTER_IMAGE_KEYS.forEach((key) => {
+      this.load.image(key, getMonsterImagePath(key));
+    });
+
     // Create placeholder graphics for development
     this.createPlaceholderAssets();
     
@@ -117,6 +123,12 @@ export class BootScene extends Phaser.Scene {
     graphics.fillStyle(0x7b68ee);
     graphics.fillCircle(50, 50, 50);
     graphics.generateTexture('character-placeholder', 100, 100);
+    graphics.clear();
+
+    // UI particle (small glow dot)
+    graphics.fillStyle(0xffffff, 0.8);
+    graphics.fillCircle(4, 4, 4);
+    graphics.generateTexture('ui-particle', 8, 8);
     graphics.clear();
 
     graphics.destroy();
@@ -163,6 +175,8 @@ export class BootScene extends Phaser.Scene {
         this.scene.start(SCENE_KEYS.LOGIN);
       });
     }
+
+    addSceneFrame(this);
     
     // Listen for logout event
     window.addEventListener('auth:logout', () => {

@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, COLORS } from '@/utils/Constants';
+import { SCENE_KEYS, COLORS, UI } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 import { UserCharacter } from '@/types';
 import { getGradeColor, getGradeStars, calculatePower, getElementColor } from '@/utils/Helpers';
+import { getMonsterImageKey } from '@/utils/monsterImages';
+import { characterService } from '@/services/CharacterService';
 
 export class CharacterDetailScene extends Phaser.Scene {
   private character!: UserCharacter;
@@ -21,6 +24,30 @@ export class CharacterDetailScene extends Phaser.Scene {
     // Background
     this.add.rectangle(0, 0, width, height, COLORS.DARK).setOrigin(0);
 
+    if (!this.character.character || !this.character.character.name) {
+      const loading = this.add.text(width / 2, height / 2, 'Loading character...', {
+        fontFamily: UI.FONTS.UI,
+        fontSize: '18px',
+        color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      });
+      loading.setOrigin(0.5);
+
+      characterService
+        .getCharacter(this.character.id)
+        .then((updated) => {
+          if (!updated) {
+            this.showToast('Failed to load character.');
+            return;
+          }
+          this.scene.restart({ character: updated });
+        })
+        .catch((error) => {
+          console.error('Load character failed:', error);
+          this.showToast('Failed to load character.');
+        });
+      return;
+    }
+
     // Left panel - Character display
     this.createCharacterDisplay(200, height / 2);
 
@@ -29,6 +56,8 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     // Back button
     this.createBackButton();
+
+    addSceneFrame(this);
   }
 
   private createCharacterDisplay(x: number, y: number): void {
@@ -43,8 +72,9 @@ export class CharacterDetailScene extends Phaser.Scene {
     card.strokeRoundedRect(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight, 15);
 
     // Character sprite
-    const sprite = this.add.sprite(x, y - 50, 'character-placeholder');
-    sprite.setScale(3);
+    const spriteKey = getMonsterImageKey(this.character);
+    const sprite = this.add.sprite(x, y - 50, spriteKey);
+    sprite.setDisplaySize(220, 220);
 
     // Floating animation
     this.tweens.add({
@@ -58,14 +88,18 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     // Character name
     const name = this.add.text(x, y + 150, this.character.character.name, {
+      fontFamily: UI.FONTS.TITLE,
       fontSize: '24px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
+      wordWrap: { width: cardWidth - 40 },
+      align: 'center',
     });
     name.setOrigin(0.5);
 
     // Stars
     const stars = this.add.text(x, y + 180, getGradeStars(this.character.character.grade), {
+      fontFamily: UI.FONTS.UI,
       fontSize: '20px',
     });
     stars.setOrigin(0.5);
@@ -79,8 +113,9 @@ export class CharacterDetailScene extends Phaser.Scene {
       0.8
     );
     const element = this.add.text(x, y + 220, this.character.character.element.toUpperCase()[0], {
+      fontFamily: UI.FONTS.UI,
       fontSize: '20px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     element.setOrigin(0.5);
@@ -99,8 +134,9 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     // Title
     this.add.text(x + 20, currentY, 'Character Details', {
+      fontFamily: UI.FONTS.TITLE,
       fontSize: '28px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     currentY += 50;
@@ -115,13 +151,16 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     infoData.forEach((info) => {
       this.add.text(x + 20, currentY, `${info.label}:`, {
+        fontFamily: UI.FONTS.UI,
         fontSize: '18px',
-        color: '#95a5a6',
+        color: this.colorToCss(COLORS.TEXT_MUTED),
       });
       this.add.text(x + 150, currentY, info.value, {
+        fontFamily: UI.FONTS.UI,
         fontSize: '18px',
-        color: '#ffffff',
+        color: this.colorToCss(COLORS.TEXT_PRIMARY),
         fontStyle: 'bold',
+        wordWrap: { width: width - 200 },
       });
       currentY += 35;
     });
@@ -130,8 +169,9 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     // Stats
     this.add.text(x + 20, currentY, 'Stats', {
+      fontFamily: UI.FONTS.TITLE,
       fontSize: '22px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     currentY += 40;
@@ -166,12 +206,14 @@ export class CharacterDetailScene extends Phaser.Scene {
   ): void {
     // Label
     this.add.text(x, y, label, {
+      fontFamily: UI.FONTS.UI,
       fontSize: '16px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
     });
 
     // Value
     this.add.text(x + 100, y, value.toString(), {
+      fontFamily: UI.FONTS.UI,
       fontSize: '16px',
       color: color,
       fontStyle: 'bold',
@@ -229,8 +271,9 @@ export class CharacterDetailScene extends Phaser.Scene {
     bg.setStrokeStyle(2, COLORS.LIGHT);
 
     const btnText = this.add.text(width / 2, height / 2, text, {
+      fontFamily: UI.FONTS.UI,
       fontSize: '16px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     btnText.setOrigin(0.5);
@@ -251,13 +294,47 @@ export class CharacterDetailScene extends Phaser.Scene {
   }
 
   private handleLevelUp(): void {
-    console.log('Level up character:', this.character.id);
-    // TODO: Implement level up logic
+    const input = window.prompt('Exp crystals to use (number):', '1');
+    const expCrystals = Number(input);
+
+    if (!Number.isFinite(expCrystals) || expCrystals <= 0) {
+      this.showToast('Please enter a valid amount.');
+      return;
+    }
+
+    characterService
+      .levelUpCharacter(this.character.id, Math.floor(expCrystals))
+      .then((updated) => {
+        if (!updated) {
+          this.showToast('Level up failed.');
+          return;
+        }
+        this.character = updated;
+        this.showToast('Level up successful.');
+        this.scene.restart({ character: updated });
+      })
+      .catch((error) => {
+        console.error('Level up failed:', error);
+        this.showToast('Level up failed.');
+      });
   }
 
   private handleEvolve(): void {
-    console.log('Evolve character:', this.character.id);
-    // TODO: Implement evolution logic
+    characterService
+      .evolveCharacter(this.character.id)
+      .then((updated) => {
+        if (!updated) {
+          this.showToast('Awaken failed.');
+          return;
+        }
+        this.character = updated;
+        this.showToast('Awaken successful.');
+        this.scene.restart({ character: updated });
+      })
+      .catch((error) => {
+        console.error('Awaken failed:', error);
+        this.showToast('Awaken failed.');
+      });
   }
 
   private handleManageRunes(): void {
@@ -272,8 +349,9 @@ export class CharacterDetailScene extends Phaser.Scene {
     bg.setStrokeStyle(2, COLORS.LIGHT);
 
     const text = this.add.text(0, 0, '← Back', {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
     });
     text.setOrigin(0.5);
 
@@ -283,6 +361,28 @@ export class CharacterDetailScene extends Phaser.Scene {
 
     button.on('pointerdown', () => {
       this.scene.start(SCENE_KEYS.CHARACTER_LIST);
+    });
+  }
+
+  private colorToCss(color: number): string {
+    return Phaser.Display.Color.IntegerToColor(color).rgba;
+  }
+
+  private showToast(message: string): void {
+    const width = this.cameras.main.width;
+    const toast = this.add.text(width / 2, 520, message, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '16px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      backgroundColor: '#000000',
+      padding: { left: 10, right: 10, top: 6, bottom: 6 },
+    });
+    toast.setOrigin(0.5);
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      duration: 1200,
+      onComplete: () => toast.destroy(),
     });
   }
 }

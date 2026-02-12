@@ -19,6 +19,11 @@ type CharacterRepository interface {
 	GetUserCharacterByID(ctx context.Context, id int64) (*domain.UserCharacter, error)
 	UpdateUserCharacter(ctx context.Context, uc *domain.UserCharacter) error
 	GetUserCharacterDetail(ctx context.Context, id int64) (*domain.CharacterDetail, error)
+	GetUserCharacterDetailsByUser(ctx context.Context, userID int64) ([]*domain.CharacterDetail, error)
+
+	// Party
+	GetUserParty(ctx context.Context, userID int64) ([]*domain.PartyMember, error)
+	ReplaceUserParty(ctx context.Context, userID int64, members []*domain.PartyMember) error
 }
 
 type characterRepository struct {
@@ -210,9 +215,8 @@ func (r *characterRepository) GetUserCharacterDetail(ctx context.Context, id int
 			uc.crit_rate, uc.crit_damage, uc.accuracy, uc.resistance,
 			uc.skill_1_level, uc.skill_2_level, uc.skill_3_level, uc.skill_4_level,
 			uc.awakened, uc.obtained_at,
-			c.id, c.name, c.grade, c.element, c.class,
-			c.base_hp, c.base_atk, c.base_def, c.base_spd,
-			c.skill_1_id, c.skill_2_id, c.skill_3_id, c.skill_4_id, c.image_url
+			c.name, c.grade, c.element, c.class,
+			c.base_hp, c.base_atk, c.base_def, c.base_spd, c.image_url
 		FROM user_characters uc
 		JOIN characters c ON uc.character_id = c.id
 		WHERE uc.id = $1
@@ -220,19 +224,123 @@ func (r *characterRepository) GetUserCharacterDetail(ctx context.Context, id int
 
 	detail := &domain.CharacterDetail{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&detail.UserCharacter.ID, &detail.UserCharacter.UserID, &detail.UserCharacter.CharacterID, &detail.UserCharacter.Level, &detail.UserCharacter.Exp,
-		&detail.UserCharacter.CurrentHP, &detail.UserCharacter.CurrentATK, &detail.UserCharacter.CurrentDEF, &detail.UserCharacter.CurrentSPD,
-		&detail.UserCharacter.CritRate, &detail.UserCharacter.CritDamage, &detail.UserCharacter.Accuracy, &detail.UserCharacter.Resistance,
-		&detail.UserCharacter.Skill1Level, &detail.UserCharacter.Skill2Level, &detail.UserCharacter.Skill3Level, &detail.UserCharacter.Skill4Level,
-		&detail.UserCharacter.Awakened, &detail.UserCharacter.ObtainedAt,
-		&detail.Character.ID, &detail.Character.Name, &detail.Character.Grade,
-		&detail.Character.Element, &detail.Character.Class,
-		&detail.Character.BaseHP, &detail.Character.BaseATK, &detail.Character.BaseDEF, &detail.Character.BaseSPD,
-		&detail.Character.Skill1ID, &detail.Character.Skill2ID, &detail.Character.Skill3ID, &detail.Character.Skill4ID,
-		&detail.Character.ImageURL,
+		&detail.ID, &detail.UserID, &detail.CharacterID, &detail.Level, &detail.Exp,
+		&detail.CurrentHP, &detail.CurrentATK, &detail.CurrentDEF, &detail.CurrentSPD,
+		&detail.CritRate, &detail.CritDamage, &detail.Accuracy, &detail.Resistance,
+		&detail.Skill1Level, &detail.Skill2Level, &detail.Skill3Level, &detail.Skill4Level,
+		&detail.Awakened, &detail.ObtainedAt,
+		&detail.Name, &detail.Grade, &detail.Element, &detail.Class,
+		&detail.BaseHP, &detail.BaseATK, &detail.BaseDEF, &detail.BaseSPD,
+		&detail.ImageURL,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("character detail not found")
 	}
 	return detail, err
+}
+
+func (r *characterRepository) GetUserCharacterDetailsByUser(ctx context.Context, userID int64) ([]*domain.CharacterDetail, error) {
+	query := `
+		SELECT 
+			uc.id, uc.user_id, uc.character_id, uc.level, uc.exp,
+			uc.current_hp, uc.current_atk, uc.current_def, uc.current_spd,
+			uc.crit_rate, uc.crit_damage, uc.accuracy, uc.resistance,
+			uc.skill_1_level, uc.skill_2_level, uc.skill_3_level, uc.skill_4_level,
+			uc.awakened, uc.obtained_at,
+			c.name, c.grade, c.element, c.class,
+			c.base_hp, c.base_atk, c.base_def, c.base_spd, c.image_url
+		FROM user_characters uc
+		JOIN characters c ON uc.character_id = c.id
+		WHERE uc.user_id = $1
+		ORDER BY uc.obtained_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var details []*domain.CharacterDetail
+	for rows.Next() {
+		detail := &domain.CharacterDetail{}
+		err := rows.Scan(
+			&detail.ID, &detail.UserID, &detail.CharacterID, &detail.Level, &detail.Exp,
+			&detail.CurrentHP, &detail.CurrentATK, &detail.CurrentDEF, &detail.CurrentSPD,
+			&detail.CritRate, &detail.CritDamage, &detail.Accuracy, &detail.Resistance,
+			&detail.Skill1Level, &detail.Skill2Level, &detail.Skill3Level, &detail.Skill4Level,
+			&detail.Awakened, &detail.ObtainedAt,
+			&detail.Name, &detail.Grade, &detail.Element, &detail.Class,
+			&detail.BaseHP, &detail.BaseATK, &detail.BaseDEF, &detail.BaseSPD,
+			&detail.ImageURL,
+		)
+		if err != nil {
+			return nil, err
+		}
+		details = append(details, detail)
+	}
+	return details, rows.Err()
+}
+
+func (r *characterRepository) GetUserParty(ctx context.Context, userID int64) ([]*domain.PartyMember, error) {
+	query := `
+		SELECT user_id, slot_index, user_character_id
+		FROM party_members
+		WHERE user_id = $1
+		ORDER BY slot_index
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var members []*domain.PartyMember
+	for rows.Next() {
+		member := &domain.PartyMember{}
+		if err := rows.Scan(&member.UserID, &member.SlotIndex, &member.UserCharacterID); err != nil {
+			return nil, err
+		}
+		members = append(members, member)
+	}
+	return members, rows.Err()
+}
+
+func (r *characterRepository) ReplaceUserParty(ctx context.Context, userID int64, members []*domain.PartyMember) error {
+	if userID == 0 {
+		return fmt.Errorf("invalid user ID")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx, "DELETE FROM party_members WHERE user_id = $1", userID); err != nil {
+		return err
+	}
+
+	if len(members) == 0 {
+		return tx.Commit()
+	}
+
+	insertQuery := `
+		INSERT INTO party_members (user_id, slot_index, user_character_id)
+		VALUES ($1, $2, $3)
+	`
+
+	for _, member := range members {
+		if _, err = tx.ExecContext(ctx, insertQuery, userID, member.SlotIndex, member.UserCharacterID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

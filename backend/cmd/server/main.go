@@ -82,6 +82,8 @@ func main() {
 	dungeonRepo := repository.NewDungeonRepository(db.DB)
 	arenaRepo := repository.NewArenaRepository(db.DB)
 	questRepo := repository.NewQuestRepository(db.DB)
+	guildRepo := repository.NewGuildRepository(db.DB)
+	shopRepo := repository.NewShopRepository(db.DB)
 	logger.Info("Repositories initialized", nil)
 
 	// Initialize use cases
@@ -89,9 +91,11 @@ func main() {
 	userUC := usecase.NewUserUseCase(userRepo)
 	charUC := usecase.NewCharacterUseCase(charRepo, userRepo)
 	summonUC := usecase.NewSummonUseCase(userRepo, charRepo, summonRepo)
-	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo)
+	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo, charRepo)
 	arenaUC := usecase.NewArenaUseCase(arenaRepo, userRepo, charRepo)
-	questUC := usecase.NewQuestUseCase(questRepo, userRepo)
+	questUC := usecase.NewQuestUseCase(questRepo, userRepo, charRepo)
+	guildUC := usecase.NewGuildUseCase(guildRepo, userRepo)
+	shopUC := usecase.NewShopUseCase(shopRepo, userRepo, charRepo)
 	logger.Info("Use cases initialized", nil)
 
 	// Initialize WebSocket Hub
@@ -105,7 +109,12 @@ func main() {
 	charHandler := handler.NewCharacterHandler(charUC)
 	summonHandler := handler.NewSummonHandler(summonUC)
 	dungeonHandler := handler.NewDungeonHandler(dungeonUC)
+	arenaHandler := handler.NewArenaHandler(arenaUC)
+	questHandler := handler.NewQuestHandler(questUC)
+	guildHandler := handler.NewGuildHandler(guildUC)
+	shopHandler := handler.NewShopHandler(shopUC)
 	wsHandler := handler.NewWebSocketHandler(wsHub)
+	docsHandler := handler.NewDocsHandler()
 	logger.Info("Handlers initialized", nil)
 
 	// Initialize router
@@ -117,7 +126,12 @@ func main() {
 		charHandler,
 		summonHandler,
 		dungeonHandler,
+		arenaHandler,
+		questHandler,
+		guildHandler,
+		shopHandler,
 		wsHandler,
+		docsHandler,
 	)
 	logger.Info("Router initialized", nil)
 

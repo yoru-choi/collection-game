@@ -10,8 +10,8 @@ import (
 )
 
 type SummonUseCase interface {
-	NormalSummon(ctx context.Context, userID int64) (*domain.SummonResult, error)
-	PremiumSummon(ctx context.Context, userID int64) (*domain.SummonResult, error)
+	NormalSummon(ctx context.Context, userID int64, count int) (*domain.SummonBatchResult, error)
+	PremiumSummon(ctx context.Context, userID int64, count int) (*domain.SummonBatchResult, error)
 	GetSummonRates() map[int]float64
 }
 
@@ -33,54 +33,76 @@ func NewSummonUseCase(
 	}
 }
 
-func (uc *summonUseCase) NormalSummon(ctx context.Context, userID int64) (*domain.SummonResult, error) {
+func (uc *summonUseCase) NormalSummon(ctx context.Context, userID int64, count int) (*domain.SummonBatchResult, error) {
 	// Get user
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check gold
-	if user.Gold < domain.NormalSummonCost {
-		return nil, fmt.Errorf("insufficient gold")
+	if count == 0 {
+		count = 1
+	}
+	if count != 1 && count != 10 {
+		return nil, fmt.Errorf("invalid summon count")
 	}
 
-	// Perform summon
-	result, err := uc.performSummon(ctx, userID, domain.SummonTypeNormal, domain.GachaRates)
-	if err != nil {
-		return nil, err
-	}
-
-	// Deduct gold
-	if err := uc.userRepo.UpdateCurrency(ctx, userID, 0, -domain.NormalSummonCost); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (uc *summonUseCase) PremiumSummon(ctx context.Context, userID int64) (*domain.SummonResult, error) {
-	// Get user
-	user, err := uc.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	totalCost := int64(domain.NormalSummonCost) * int64(count)
 
 	// Check crystals
-	if user.Crystals < domain.PremiumSummonCost {
+	if user.Crystals < totalCost {
 		return nil, fmt.Errorf("insufficient crystals")
 	}
 
 	// Perform summon
-	result, err := uc.performSummon(ctx, userID, domain.SummonTypePremium, domain.PremiumGachaRates)
+	result, err := uc.performMultiSummon(ctx, userID, domain.SummonTypeNormal, count, domain.GachaRates)
 	if err != nil {
 		return nil, err
 	}
 
 	// Deduct crystals
-	if err := uc.userRepo.UpdateCurrency(ctx, userID, -domain.PremiumSummonCost, 0); err != nil {
+	if err := uc.userRepo.UpdateCurrency(ctx, userID, -totalCost, 0); err != nil {
 		return nil, err
 	}
+
+	result.RemainingCrystals = user.Crystals - totalCost
+
+	return result, nil
+}
+
+func (uc *summonUseCase) PremiumSummon(ctx context.Context, userID int64, count int) (*domain.SummonBatchResult, error) {
+	// Get user
+	user, err := uc.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if count == 0 {
+		count = 1
+	}
+	if count != 1 && count != 10 {
+		return nil, fmt.Errorf("invalid summon count")
+	}
+
+	totalCost := int64(domain.PremiumSummonCost) * int64(count)
+
+	// Check crystals
+	if user.Crystals < totalCost {
+		return nil, fmt.Errorf("insufficient crystals")
+	}
+
+	// Perform summon
+	result, err := uc.performMultiSummon(ctx, userID, domain.SummonTypePremium, count, domain.PremiumGachaRates)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deduct crystals
+	if err := uc.userRepo.UpdateCurrency(ctx, userID, -totalCost, 0); err != nil {
+		return nil, err
+	}
+
+	result.RemainingCrystals = user.Crystals - totalCost
 
 	return result, nil
 }
@@ -89,14 +111,79 @@ func (uc *summonUseCase) GetSummonRates() map[int]float64 {
 	return domain.GachaRates
 }
 
+func (uc *summonUseCase) performMultiSummon(
+	ctx context.Context,
+	userID int64,
+	summonType domain.SummonType,
+	count int,
+	rates map[int]float64,
+) (*domain.SummonBatchResult, error) {
+	if count <= 0 {
+		return nil, fmt.Errorf("invalid summon count")
+	}
+
+	bonus := 0
+	if count == 10 {
+		bonus = 1 // 10+1 bonus
+	}
+	rolls := count + bonus
+
+	results := make([]domain.SummonResult, 0, rolls)
+	guaranteed := count == 10
+	hasFourPlus := false
+
+	for i := 0; i < rolls; i++ {
+		var (
+			result *domain.SummonResult
+			grade  int
+			err    error
+		)
+
+		forceFourPlus := guaranteed && !hasFourPlus && i == rolls-1
+		if forceFourPlus {
+			grade = 4
+			result, err = uc.performSummonWithGrade(ctx, userID, summonType, grade)
+		} else {
+			result, grade, err = uc.performSummon(ctx, userID, summonType, rates)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if grade >= 4 {
+			hasFourPlus = true
+		}
+		results = append(results, *result)
+	}
+
+	return &domain.SummonBatchResult{
+		Results: results,
+	}, nil
+}
+
 func (uc *summonUseCase) performSummon(
 	ctx context.Context,
 	userID int64,
 	summonType domain.SummonType,
 	rates map[int]float64,
-) (*domain.SummonResult, error) {
+) (*domain.SummonResult, int, error) {
 	// Roll for grade
 	grade := utils.SelectByProbability(rates)
+
+	result, err := uc.performSummonWithGrade(ctx, userID, summonType, grade)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return result, grade, nil
+}
+
+func (uc *summonUseCase) performSummonWithGrade(
+	ctx context.Context,
+	userID int64,
+	summonType domain.SummonType,
+	grade int,
+) (*domain.SummonResult, error) {
 
 	// Get random character of that grade
 	characters, err := uc.charRepo.GetByGrade(ctx, grade)

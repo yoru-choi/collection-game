@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"collection-game/internal/middleware"
@@ -57,4 +58,31 @@ func (h *UserHandler) GetInventory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Success(w, inventory)
+}
+
+type UpdateProfileRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}
+
+func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.Unauthorized(w, "user not authenticated")
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.BadRequest(w, "invalid request body")
+		return
+	}
+
+	profile, err := h.userUC.UpdateProfile(r.Context(), userID, req.Username, req.Email)
+	if err != nil {
+		utils.BadRequest(w, err.Error())
+		return
+	}
+
+	utils.Success(w, profile)
 }

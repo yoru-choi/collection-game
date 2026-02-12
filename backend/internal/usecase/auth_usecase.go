@@ -12,10 +12,16 @@ import (
 )
 
 type AuthUseCase interface {
-	Register(ctx context.Context, username, email, password string) (*auth.TokenPair, error)
-	Login(ctx context.Context, username, password string) (*auth.TokenPair, error)
-	RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error)
+	Register(ctx context.Context, username, email, password string) (*AuthResult, error)
+	Login(ctx context.Context, username, password string) (*AuthResult, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, accessToken string, refreshToken string) error
+}
+
+type AuthResult struct {
+	AccessToken  string
+	RefreshToken string
+	User         *domain.UserProfile
 }
 
 type authUseCase struct {
@@ -32,7 +38,7 @@ func NewAuthUseCase(userRepo repository.UserRepository, jwt *auth.JWT, tokenServ
 	}
 }
 
-func (uc *authUseCase) Register(ctx context.Context, username, email, password string) (*auth.TokenPair, error) {
+func (uc *authUseCase) Register(ctx context.Context, username, email, password string) (*AuthResult, error) {
 	// Validate input
 	if username == "" || email == "" || password == "" {
 		return nil, errors.New("username, email, and password are required")
@@ -72,6 +78,7 @@ func (uc *authUseCase) Register(ctx context.Context, username, email, password s
 		Energy:           100,
 		MaxEnergy:        100,
 		LastEnergyUpdate: time.Now(),
+		LastLogin:        time.Now(),
 	}
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
@@ -84,6 +91,10 @@ func (uc *authUseCase) Register(ctx context.Context, username, email, password s
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
+	if uc.tokenService == nil {
+		return nil, errors.New("token service unavailable")
+	}
+
 	// Store refresh token in Valkey
 	refreshClaims, err := uc.jwt.ValidateToken(tokens.RefreshToken)
 	if err != nil {
@@ -94,10 +105,14 @@ func (uc *authUseCase) Register(ctx context.Context, username, email, password s
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	return tokens, nil
+	return &AuthResult{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		User:         user.ToProfile(),
+	}, nil
 }
 
-func (uc *authUseCase) Login(ctx context.Context, username, password string) (*auth.TokenPair, error) {
+func (uc *authUseCase) Login(ctx context.Context, username, password string) (*AuthResult, error) {
 	// Get user by username
 	user, err := uc.userRepo.GetByUsername(ctx, username)
 	if err != nil {
@@ -115,6 +130,10 @@ func (uc *authUseCase) Login(ctx context.Context, username, password string) (*a
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
+	if uc.tokenService == nil {
+		return nil, errors.New("token service unavailable")
+	}
+
 	// Store refresh token in Valkey
 	refreshClaims, err := uc.jwt.ValidateToken(tokens.RefreshToken)
 	if err != nil {
@@ -125,14 +144,25 @@ func (uc *authUseCase) Login(ctx context.Context, username, password string) (*a
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	return tokens, nil
+	_ = uc.userRepo.UpdateLastLogin(ctx, user.ID, time.Now())
+	user.LastLogin = time.Now()
+
+	return &AuthResult{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		User:         user.ToProfile(),
+	}, nil
 }
 
-func (uc *authUseCase) RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error) {
+func (uc *authUseCase) RefreshToken(ctx context.Context, refreshToken string) (*AuthResult, error) {
 	// Validate refresh token
 	claims, err := uc.jwt.ValidateToken(refreshToken)
 	if err != nil {
 		return nil, err
+	}
+
+	if uc.tokenService == nil {
+		return nil, errors.New("token service unavailable")
 	}
 
 	// Check if refresh token exists in Valkey
@@ -162,7 +192,11 @@ func (uc *authUseCase) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, fmt.Errorf("failed to store new refresh token: %w", err)
 	}
 
-	return tokens, nil
+	return &AuthResult{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		User:         nil,
+	}, nil
 }
 
 func (uc *authUseCase) Logout(ctx context.Context, accessToken string, refreshToken string) error {
@@ -171,6 +205,10 @@ func (uc *authUseCase) Logout(ctx context.Context, accessToken string, refreshTo
 	if err != nil && err != auth.ErrExpiredToken {
 		// If token is invalid (not just expired), still try to clean up
 		return nil
+	}
+
+	if uc.tokenService == nil {
+		return errors.New("token service unavailable")
 	}
 
 	// Blacklist access token

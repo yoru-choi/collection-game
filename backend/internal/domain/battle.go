@@ -75,6 +75,12 @@ type BattleAction struct {
 type TeamMember struct {
 	UserCharacterID int64  `json:"user_character_id"`
 	CharacterID     int64  `json:"character_id"`
+	Name            string `json:"name"`
+	Grade           int    `json:"grade"`
+	Element         string `json:"element"`
+	Class           string `json:"class"`
+	ImageURL        string `json:"image_url"`
+	Level           int    `json:"level"`
 	Position        int    `json:"position"` // 0-3 for 4-member team
 	CurrentHP       int    `json:"current_hp"`
 	MaxHP           int    `json:"max_hp"`
@@ -83,6 +89,14 @@ type TeamMember struct {
 	Spd             int    `json:"spd"`
 	Buffs           []Buff `json:"buffs,omitempty"`
 	Debuffs         []Buff `json:"debuffs,omitempty"`
+}
+
+// BattleStart represents the initial battle payload for clients
+type BattleStart struct {
+	ID         int64        `json:"id"`
+	Status     string       `json:"status"`
+	PlayerTeam []TeamMember `json:"player_team"`
+	EnemyTeam  []TeamMember `json:"enemy_team"`
 }
 
 // Buff represents a status effect

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"collection-game/internal/domain"
 )
@@ -144,8 +145,42 @@ func (r *QuestRepository) ClaimQuest(ctx context.Context, userID int64, questID 
 	}
 
 	var rewards domain.QuestRewards
-	// TODO: Parse rewardsJSON into rewards struct
+	if len(rewardsJSON) > 0 {
+		if err := json.Unmarshal(rewardsJSON, &rewards); err != nil {
+			return nil, err
+		}
+	}
 	return &rewards, nil
+}
+
+// CompleteQuest marks quest as completed if progress meets the target
+func (r *QuestRepository) CompleteQuest(ctx context.Context, userID int64, questID int64) error {
+	query := `
+		UPDATE user_quests uq
+		SET is_completed = true,
+			completed_at = NOW()
+		FROM quests q
+		WHERE uq.user_id = $1
+			AND uq.quest_id = $2
+			AND uq.quest_id = q.id
+			AND uq.is_claimed = false
+			AND uq.progress >= q.condition_target
+	`
+
+	result, err := r.db.ExecContext(ctx, query, userID, questID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // GetDailyLogin gets user's daily login record
@@ -154,6 +189,28 @@ func (r *QuestRepository) GetDailyLogin(ctx context.Context, userID int64) (*dom
 		SELECT id, user_id, login_day, last_login_date, total_login_days
 		FROM user_daily_login
 		WHERE user_id = $1
+	`
+
+	var dl domain.UserDailyLogin
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(
+		&dl.ID,
+		&dl.UserID,
+		&dl.LoginDay,
+		&dl.LastLoginDate,
+		&dl.TotalLoginDays,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dl, nil
+}
+
+func (r *QuestRepository) CreateDailyLogin(ctx context.Context, userID int64) (*domain.UserDailyLogin, error) {
+	query := `
+		INSERT INTO user_daily_login (user_id, login_day, last_login_date, total_login_days)
+		VALUES ($1, 1, CURRENT_DATE, 1)
+		RETURNING id, user_id, login_day, last_login_date, total_login_days
 	`
 
 	var dl domain.UserDailyLogin

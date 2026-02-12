@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS, COLORS, UI } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 import { GameDataStore } from '@/store/GameDataStore';
 import { UserCharacter } from '@/types';
 import { getGradeColor, getGradeStars, calculatePower } from '@/utils/Helpers';
+import { getMonsterImageKey } from '@/utils/monsterImages';
+import { characterService } from '@/services/CharacterService';
 
 export class CharacterListScene extends Phaser.Scene {
   private gameData!: GameDataStore;
   private characters: UserCharacter[] = [];
   private selectedFilter: string = 'all';
   private sortBy: string = 'power';
+  private statusText?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: SCENE_KEYS.CHARACTER_LIST });
@@ -33,8 +37,34 @@ export class CharacterListScene extends Phaser.Scene {
     // Character grid
     this.createCharacterGrid(width, height);
 
+    this.statusText = this.add.text(width / 2, height / 2, 'Loading characters...', {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '20px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      wordWrap: { width: width - 120 },
+      align: 'center',
+    }).setOrigin(0.5);
+
+    this.loadCharacters();
+
     // Back button
     this.createBackButton();
+
+    addSceneFrame(this);
+  }
+
+  private async loadCharacters(): Promise<void> {
+    try {
+      const characters = await characterService.getCharacterList();
+      this.characters = characters;
+      this.gameData.setUserCharacters(characters);
+      this.scene.restart();
+    } catch (error) {
+      if (this.statusText) {
+        this.statusText.setText('Failed to load characters');
+      }
+      console.error('Failed to load characters:', error);
+    }
   }
 
   private createTopBar(width: number): void {
@@ -43,16 +73,18 @@ export class CharacterListScene extends Phaser.Scene {
     topBar.fillRect(0, 0, width, 70);
 
     const title = this.add.text(width / 2, 35, 'My Characters', {
+      fontFamily: UI.FONTS.TITLE,
       fontSize: '32px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
     // Character count
     const count = this.add.text(width - 20, 35, `Total: ${this.characters.length}`, {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_SECONDARY),
     });
     count.setOrigin(1, 0.5);
   }
@@ -121,13 +153,13 @@ export class CharacterListScene extends Phaser.Scene {
   }
 
   private createCharacterGrid(width: number, height: number): void {
-    const startX = 100;
-    const startY = 180;
-    const cardWidth = 200;
-    const cardHeight = 280;
-    const cols = 5;
-    const spacingX = 20;
-    const spacingY = 20;
+    const startX = 120;
+    const startY = 170;
+    const cardWidth = 240;
+    const cardHeight = 320;
+    const cols = 4;
+    const spacingX = 24;
+    const spacingY = 26;
 
     // Filter characters
     let filteredChars = this.characters;
@@ -161,9 +193,11 @@ export class CharacterListScene extends Phaser.Scene {
         height / 2,
         'No characters found.\nGo to Summon to get characters!',
         {
+          fontFamily: UI.FONTS.UI,
           fontSize: '24px',
-          color: '#ffffff',
+          color: this.colorToCss(COLORS.TEXT_PRIMARY),
           align: 'center',
+          wordWrap: { width: width - 200 },
         }
       );
       noCharText.setOrigin(0.5);
@@ -179,44 +213,75 @@ export class CharacterListScene extends Phaser.Scene {
   ): void {
     const card = this.add.container(x, y);
 
-    // Card background
-    const bg = this.add.rectangle(0, 0, width, height, COLORS.SECONDARY, 0.8);
-    bg.setStrokeStyle(3, getGradeColor(character.character.grade));
+    const gradeColor = getGradeColor(character.character.grade);
 
-    // Character image placeholder
-    const charSprite = this.add.sprite(0, -40, 'character-placeholder');
-    charSprite.setScale(1.2);
+    // Card background with frame
+    const bg = this.add.graphics();
+    bg.fillStyle(COLORS.DARKER, 0.95);
+    bg.fillRoundedRect(-width / 2, -height / 2, width, height, 16);
+    bg.lineStyle(3, gradeColor, 0.9);
+    bg.strokeRoundedRect(-width / 2, -height / 2, width, height, 16);
+    bg.lineStyle(1, COLORS.LIGHT, 0.25);
+    bg.strokeRoundedRect(-width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 12);
+
+    // Inner glow
+    const glow = this.add.graphics();
+    glow.fillStyle(gradeColor, 0.12);
+    glow.fillRoundedRect(-width / 2 + 10, -height / 2 + 10, width - 20, height * 0.58, 12);
+
+    // Character image
+    const spriteKey = getMonsterImageKey(character);
+    const charSprite = this.add.sprite(0, -30, spriteKey);
+    charSprite.setDisplaySize(150, 150);
+
+    // Rarity ribbon
+    const ribbon = this.add.graphics();
+    ribbon.fillStyle(gradeColor, 0.95);
+    ribbon.fillRoundedRect(-width / 2 + 12, -height / 2 + 12, 84, 28, 8);
+    const ribbonText = this.add.text(-width / 2 + 54, -height / 2 + 26, `${character.character.grade}★`, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '14px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      fontStyle: 'bold',
+    });
+    ribbonText.setOrigin(0.5);
 
     // Character name
-    const name = this.add.text(0, 60, character.character.name, {
+    const name = this.add.text(0, 80, character.character.name, {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
+      wordWrap: { width: width - 20 },
+      align: 'center',
     });
     name.setOrigin(0.5);
 
     // Stars
-    const stars = this.add.text(0, 85, getGradeStars(character.character.grade), {
+    const stars = this.add.text(0, 110, getGradeStars(character.character.grade), {
+      fontFamily: UI.FONTS.UI,
       fontSize: '16px',
     });
     stars.setOrigin(0.5);
 
     // Level
-    const level = this.add.text(0, 105, `Lv. ${character.level}`, {
-      fontSize: '16px',
-      color: '#4a90e2',
+    const level = this.add.text(-width / 2 + 16, height / 2 - 26, `Lv. ${character.level}`, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '14px',
+      color: this.colorToCss(COLORS.SECONDARY_LIGHT),
     });
-    level.setOrigin(0.5);
+    level.setOrigin(0, 0.5);
 
     // Power
     const power = calculatePower(character);
-    const powerText = this.add.text(0, 125, `Power: ${power}`, {
-      fontSize: '14px',
-      color: '#f39c12',
+    const powerText = this.add.text(width / 2 - 16, height / 2 - 26, `PWR ${power}`, {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '13px',
+      color: this.colorToCss(COLORS.GOLD),
     });
-    powerText.setOrigin(0.5);
+    powerText.setOrigin(1, 0.5);
 
-    card.add([bg, charSprite, name, stars, level, powerText]);
+    card.add([bg, glow, charSprite, ribbon, ribbonText, name, stars, level, powerText]);
     card.setSize(width, height);
     card.setInteractive({ useHandCursor: true });
 
@@ -251,8 +316,9 @@ export class CharacterListScene extends Phaser.Scene {
     bg.setStrokeStyle(2, COLORS.LIGHT);
 
     const text = this.add.text(0, 0, '← Back', {
+      fontFamily: UI.FONTS.UI,
       fontSize: '18px',
-      color: '#ffffff',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
     });
     text.setOrigin(0.5);
 
@@ -263,5 +329,9 @@ export class CharacterListScene extends Phaser.Scene {
     button.on('pointerdown', () => {
       this.scene.start(SCENE_KEYS.LOBBY);
     });
+  }
+
+  private colorToCss(color: number): string {
+    return Phaser.Display.Color.IntegerToColor(color).rgba;
   }
 }

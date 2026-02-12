@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS, COLORS } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 
 export class GuildScene extends Phaser.Scene {
   constructor() {
@@ -18,6 +19,8 @@ export class GuildScene extends Phaser.Scene {
     }).setOrigin(0.5);
     
     this.createBackButton();
+    
+    addSceneFrame(this);
   }
 
   private createBackButton(): void {

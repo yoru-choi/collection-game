@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
+import { TutorialScene } from './scenes/TutorialScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import { CharacterListScene } from './scenes/CharacterListScene';
 import { CharacterDetailScene } from './scenes/CharacterDetailScene';
@@ -11,21 +12,24 @@ import { ArenaScene } from './scenes/ArenaScene';
 import { GuildScene } from './scenes/GuildScene';
 import { ShopScene } from './scenes/ShopScene';
 import { InventoryScene } from './scenes/InventoryScene';
+import { SettingsScene } from './scenes/SettingsScene';
+import { CreditsScene } from './scenes/CreditsScene';
+import { GAME_CONFIG } from './utils/Constants';
 
 console.log('Game config: Initializing...');
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1280,
-  height: 720,
+  width: GAME_CONFIG.WIDTH,
+  height: GAME_CONFIG.HEIGHT,
   parent: 'game-container',
-  backgroundColor: '#000000',
+  backgroundColor: '#18150f',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     // 반응형: 모든 화면 크기에 자동 대응 (Windows, iPad, Mobile)
-    width: 1280,
-    height: 720,
+    width: GAME_CONFIG.WIDTH,
+    height: GAME_CONFIG.HEIGHT,
   },
   physics: {
     default: 'arcade',
@@ -37,6 +41,7 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [
     BootScene,
     LoginScene,
+    TutorialScene,
     LobbyScene,
     CharacterListScene,
     CharacterDetailScene,
@@ -47,6 +52,8 @@ const config: Phaser.Types.Core.GameConfig = {
     GuildScene,
     ShopScene,
     InventoryScene,
+    SettingsScene,
+    CreditsScene,
   ],
   callbacks: {
     preBoot: (game) => {

@@ -2,6 +2,9 @@ package usecase
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 
 	"collection-game/internal/domain"
 	"collection-game/internal/repository"
@@ -9,16 +12,19 @@ import (
 
 type QuestUseCase struct {
 	questRepo *repository.QuestRepository
-	userRepo  *repository.UserRepository
+	userRepo  repository.UserRepository
+	charRepo  repository.CharacterRepository
 }
 
 func NewQuestUseCase(
 	questRepo *repository.QuestRepository,
-	userRepo *repository.UserRepository,
+	userRepo repository.UserRepository,
+	charRepo repository.CharacterRepository,
 ) *QuestUseCase {
 	return &QuestUseCase{
 		questRepo: questRepo,
 		userRepo:  userRepo,
+		charRepo:  charRepo,
 	}
 }
 
@@ -68,15 +74,8 @@ func (uc *QuestUseCase) ClaimQuest(ctx context.Context, userID int64, questID in
 	}
 
 	// Grant rewards to user
-	if rewards.Crystals > 0 {
-		err = uc.userRepo.AddCrystals(ctx, userID, int64(rewards.Crystals))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if rewards.Gold > 0 {
-		err = uc.userRepo.AddGold(ctx, userID, int64(rewards.Gold))
+	if rewards.Crystals > 0 || rewards.Gold > 0 {
+		err = uc.userRepo.UpdateCurrency(ctx, userID, int64(rewards.Crystals), int64(rewards.Gold))
 		if err != nil {
 			return nil, err
 		}
@@ -96,12 +95,113 @@ func (uc *QuestUseCase) ClaimQuest(ctx context.Context, userID int64, questID in
 		}
 	}
 
-	// TODO: Grant item rewards
+	if err := uc.grantItemRewards(ctx, userID, rewards.Items); err != nil {
+		return nil, err
+	}
 
 	return rewards, nil
 }
 
+// CompleteQuest marks quest as completed if requirements are met
+func (uc *QuestUseCase) CompleteQuest(ctx context.Context, userID int64, questID int64) error {
+	err := uc.questRepo.CompleteQuest(ctx, userID, questID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("quest not ready to complete")
+	}
+	return err
+}
+
+func (uc *QuestUseCase) grantItemRewards(ctx context.Context, userID int64, items []domain.RewardItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	var addCrystals int64
+	var addGold int64
+	var addExp int64
+	var addEnergy int
+
+	for _, item := range items {
+		if item.Quantity <= 0 {
+			continue
+		}
+		switch item.Type {
+		case "crystal":
+			addCrystals += int64(item.Quantity)
+		case "gold":
+			addGold += int64(item.Quantity)
+		case "exp":
+			addExp += int64(item.Quantity)
+		case "energy":
+			addEnergy += item.Quantity
+		case "character":
+			if item.ID == nil {
+				return fmt.Errorf("character reward missing id")
+			}
+			for i := 0; i < item.Quantity; i++ {
+				if err := uc.grantCharacter(ctx, userID, *item.ID); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unsupported reward item type: %s", item.Type)
+		}
+	}
+
+	if addCrystals != 0 || addGold != 0 {
+		if err := uc.userRepo.UpdateCurrency(ctx, userID, addCrystals, addGold); err != nil {
+			return err
+		}
+	}
+	if addExp > 0 {
+		if err := uc.userRepo.AddExp(ctx, userID, addExp); err != nil {
+			return err
+		}
+	}
+	if addEnergy > 0 {
+		if err := uc.userRepo.AddEnergy(ctx, userID, addEnergy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (uc *QuestUseCase) grantCharacter(ctx context.Context, userID int64, characterID int64) error {
+	char, err := uc.charRepo.GetByID(ctx, characterID)
+	if err != nil {
+		return err
+	}
+
+	userChar := &domain.UserCharacter{
+		UserID:      userID,
+		CharacterID: char.ID,
+		Level:       1,
+		Exp:         0,
+		CritRate:    5.0,
+		CritDamage:  50.0,
+		Accuracy:    0.0,
+		Resistance:  0.0,
+		Skill1Level: 1,
+		Skill2Level: 1,
+		Skill3Level: 1,
+		Skill4Level: 1,
+		Awakened:    false,
+	}
+
+	userChar.CalculateStats(char)
+	return uc.charRepo.CreateUserCharacter(ctx, userChar)
+}
+
 // GetDailyLogin gets user's daily login status
 func (uc *QuestUseCase) GetDailyLogin(ctx context.Context, userID int64) (*domain.UserDailyLogin, error) {
-	return uc.questRepo.GetDailyLogin(ctx, userID)
+	dailyLogin, err := uc.questRepo.GetDailyLogin(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return uc.questRepo.CreateDailyLogin(ctx, userID)
+		}
+		return nil, err
+	}
+
+	return dailyLogin, nil
 }

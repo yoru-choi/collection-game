@@ -110,6 +110,31 @@ export interface BattleState {
   status: 'ongoing' | 'victory' | 'defeat';
 }
 
+export interface BattleTeamMember {
+  id: string;
+  userCharacterId?: string;
+  characterId: string;
+  name: string;
+  grade: Grade;
+  element: ElementType;
+  class: CharacterClass;
+  imageUrl: string;
+  level: number;
+  position: number;
+  currentHp: number;
+  maxHp: number;
+  atk: number;
+  def: number;
+  spd: number;
+}
+
+export interface BattleStart {
+  id: string;
+  status: 'ongoing' | 'victory' | 'defeat';
+  playerTeam: BattleTeamMember[];
+  enemyTeam: BattleTeamMember[];
+}
+
 export interface BattleCharacter {
   id: string;
   userCharacter: UserCharacter;
@@ -149,11 +174,15 @@ export interface Dungeon {
   name: string;
   type: string;
   difficulty: string;
+  chapter?: number;
+  stage?: number;
   energyCost: number;
   recommendedPower: number;
   stages: DungeonStage[];
   rewards: Reward[];
   firstClearReward?: Reward[];
+  expReward?: number;
+  goldReward?: number;
 }
 
 export interface DungeonStage {
@@ -270,7 +299,7 @@ export interface PaginationParams {
 }
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -293,8 +322,14 @@ export interface SummonRequest {
 }
 
 export interface SummonResponse {
-  characters: UserCharacter[];
-  remainingCrystals: number;
+  results: SummonResult[];
+  remaining_crystals: number;
+}
+
+export interface SummonResult {
+  character_id: number;
+  character: Character;
+  is_new: boolean;
 }
 
 // WebSocket Message Types

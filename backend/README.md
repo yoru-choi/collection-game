@@ -26,11 +26,19 @@
 
 ### 🎮 게임 기능
 - ✅ 유저 인증 시스템
-- ✅ 캐릭터 시스템 (20종)
+- ✅ 캐릭터 시스템 (속성, 클래스별 분류)
 - ✅ 가챠 시스템 (일반/프리미엄)
-- ✅ 캐릭터 레벨업
+- ✅ 캐릭터 레벨업 & 각성
 - ✅ 화폐 시스템 (크리스탈, 골드)
 - ✅ 에너지 시스템 (자동 회복)
+- ✅ 던전 시스템 (스토리, 속성, 경험치, 골드, 보스)
+- ✅ PvP 아레나 (비동기 전투)
+- ✅ 길드 시스템
+- ✅ 상점 시스템
+- ✅ 퀘스트 시스템 (일일/주간/업적)
+- ✅ 전투 시스템 (턴제 전투)
+- ✅ 친구 시스템
+- ✅ 룬 장비 시스템
 
 ## 📂 프로젝트 구조
 
@@ -128,8 +136,44 @@ go run cmd/server/main.go
 - `POST /api/v1/characters/:id/awaken` - 각성
 
 #### 🎰 가챠
-- `POST /api/v1/summon/normal` - 일반 소환 (골드 1,000)
-- `POST /api/v1/summon/premium` - 프리미엄 소환 (크리스탈 100)
+- `POST /api/v1/summon/normal` - 일반 소환
+- `POST /api/v1/summon/premium` - 프리미엄 소환
+- `GET /api/v1/summon/rates` - 확률 정보
+
+#### 🏰 던전
+- `GET /api/v1/dungeons` - 던전 목록
+- `GET /api/v1/dungeons/:id` - 던전 상세
+- `POST /api/v1/dungeons/:id/enter` - 던전 입장
+- `POST /api/v1/dungeons/:id/complete` - 던전 완료
+- `GET /api/v1/dungeons/progress` - 진행 상황
+
+#### ⚔️ 아레나
+- `GET /api/v1/arena` - 내 아레나 정보
+- `PUT /api/v1/arena/defense` - 방어 팀 설정
+- `GET /api/v1/arena/ranking` - 랭킹 조회
+- `POST /api/v1/arena/attack` - 공격
+- `GET /api/v1/arena/history` - 전투 기록
+
+#### 🏰 길드
+- `GET /api/v1/guilds` - 길드 목록
+- `POST /api/v1/guilds` - 길드 생성
+- `GET /api/v1/guilds/:id` - 길드 상세
+- `POST /api/v1/guilds/:id/join` - 길드 가입
+- `POST /api/v1/guilds/:id/leave` - 길드 탈퇴
+- `GET /api/v1/guilds/:id/members` - 멤버 목록
+- `GET /api/v1/guilds/my` - 내 길드
+
+#### 🛒 상점
+- `GET /api/v1/shop/items` - 상점 아이템 목록
+- `POST /api/v1/shop/purchase` - 구매
+- `GET /api/v1/shop/history` - 구매 기록
+
+#### 📋 퀘스트
+- `GET /api/v1/quests/daily` - 일일 퀘스트
+- `GET /api/v1/quests/weekly` - 주간 퀘스트
+- `GET /api/v1/quests/achievements` - 업적
+- `POST /api/v1/quests/:id/claim` - 보상 수령
+- `GET /api/v1/login/daily` - 일일 로그인 보상
 
 #### 🌐 WebSocket
 - `ws://localhost/ws` - WebSocket 연결
@@ -246,19 +290,34 @@ websocat ws://localhost/ws
 
 ## 🛠️ 개발 팁
 
-### 환경 변수
-```bash
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=password
-DB_NAME=collection_game
-VALKEY_HOST=localhost
-VALKEY_PORT=6379
-JWT_SECRET=your-secret-key-change-in-production
-```
+### 환경 변수 (PostgreSQL, Valkey, Nginx, Dozzle)
+- JWT 인증 시스템 (Valkey 기반)
+- API Versioning (/api/v1/*)
+- WebSocket 실시간 통신
+- Rate Limiting (Nginx + Application)
+- 구조화된 로깅
+- Clean Architecture
 
-### 마이그레이션 생성
+### ✅ Phase 2 (완료)
+- 유저/캐릭터 시스템
+- 가챠 시스템
+- 던전 시스템 (스토리, 속성, 경험치, 골드, 보스)
+- PvP 아레나 (비동기 전투)
+- 길드 시스템
+- 상점 시스템
+- 퀘스트 시스템 (일일/주간/업적)
+- 전투 시스템 (턴제)
+- 친구 시스템
+- 룬 장비 시스템
+
+### 🔜 Phase 3 (예정)
+- 프론트엔드 (Phaser 3 + TypeScript)
+- 실시간 PvP (WebSocket 기반)
+- 길드전
+- 이벤트 시스템
+- 보스 레이드
+- 스킨 시스템
+- 시즌 패스션 생성
 ```bash
 # 새 마이그레이션 파일 생성
 migrate create -ext sql -dir migrations -seq add_new_table

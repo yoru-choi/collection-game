@@ -1,8 +1,13 @@
 import Phaser from 'phaser';
 import { SCENE_KEYS, COLORS } from '@/utils/Constants';
+import { addSceneFrame } from '@/utils/SceneFrame';
 import { Dungeon } from '@/types';
+import { dungeonService } from '@/services/DungeonService';
 
 export class DungeonSelectScene extends Phaser.Scene {
+  private dungeons: Dungeon[] = [];
+  private statusText?: Phaser.GameObjects.Text;
+
   constructor() {
     super({ key: SCENE_KEYS.DUNGEON_SELECT });
   }
@@ -20,58 +25,114 @@ export class DungeonSelectScene extends Phaser.Scene {
     });
     title.setOrigin(0.5);
 
-    // Create dungeon categories
-    const categories = [
-      { name: 'Story', icon: '📖', color: COLORS.PRIMARY },
-      { name: 'Element', icon: '🔥', color: COLORS.DANGER },
-      { name: 'Experience', icon: '⭐', color: COLORS.WARNING },
-      { name: 'Gold', icon: '🪙', color: COLORS.SUCCESS },
-      { name: 'Boss Raid', icon: '👹', color: COLORS.SECONDARY },
-    ];
+    this.statusText = this.add.text(width / 2, height / 2, 'Loading dungeons...', {
+      fontSize: '20px',
+      color: '#ffffff',
+    }).setOrigin(0.5);
 
-    categories.forEach((cat, index) => {
-      this.createDungeonCategory(
-        width / 2 - 450 + index * 230,
-        height / 2,
-        cat.name,
-        cat.icon,
-        cat.color
-      );
-    });
+    this.loadStoryDungeons();
 
     this.createBackButton();
+    addSceneFrame(this);
   }
 
-  private createDungeonCategory(
-    x: number,
-    y: number,
-    name: string,
-    icon: string,
-    color: number
-  ): void {
-    const button = this.add.container(x, y);
+  private async loadStoryDungeons(): Promise<void> {
+    try {
+      const dungeons = await dungeonService.getDungeons(1);
+      this.dungeons = dungeons.filter((d) => d.type === 'story');
+      this.renderDungeonList();
+    } catch (error) {
+      if (this.statusText) {
+        this.statusText.setText('Failed to load dungeons');
+      }
+      console.error('Failed to load dungeons:', error);
+    }
+  }
 
-    const bg = this.add.rectangle(0, 0, 200, 250, color, 0.8);
-    bg.setStrokeStyle(3, COLORS.LIGHT);
+  private renderDungeonList(): void {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
 
-    const iconText = this.add.text(0, -60, icon, { fontSize: '64px' });
-    iconText.setOrigin(0.5);
+    if (this.statusText) {
+      this.statusText.destroy();
+      this.statusText = undefined;
+    }
 
-    const nameText = this.add.text(0, 40, name, {
-      fontSize: '22px',
+    const header = this.add.text(width / 2, 120, 'Story Dungeons (Chapter 1)', {
+      fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold',
     });
-    nameText.setOrigin(0.5);
+    header.setOrigin(0.5);
 
-    button.add([bg, iconText, nameText]);
-    button.setSize(200, 250);
-    button.setInteractive({ useHandCursor: true });
+    if (this.dungeons.length === 0) {
+      this.add.text(width / 2, height / 2, 'No dungeons available', {
+        fontSize: '20px',
+        color: '#ffffff',
+      }).setOrigin(0.5);
+      return;
+    }
 
-    button.on('pointerdown', () => {
-      console.log(`Selected dungeon: ${name}`);
-      // Navigate to specific dungeon or start battle
-      this.scene.start(SCENE_KEYS.BATTLE);
+    const startY = 180;
+    const rowHeight = 70;
+
+    this.dungeons.forEach((dungeon, index) => {
+      const y = startY + index * rowHeight;
+      this.createDungeonRow(width / 2, y, dungeon);
+    });
+  }
+
+  private createDungeonRow(x: number, y: number, dungeon: Dungeon): void {
+    const row = this.add.container(x, y);
+    const bg = this.add.rectangle(0, 0, 700, 55, COLORS.PRIMARY, 0.25);
+    bg.setStrokeStyle(2, COLORS.LIGHT);
+
+    const name = this.add.text(-300, 0, `${dungeon.chapter}-${dungeon.stage} ${dungeon.name}`, {
+      fontSize: '18px',
+      color: '#ffffff',
+    });
+    name.setOrigin(0, 0.5);
+
+    const energy = this.add.text(170, 0, `⚡ ${dungeon.energyCost}`, {
+      fontSize: '16px',
+      color: '#50c878',
+    });
+    energy.setOrigin(0.5);
+
+    const playText = this.add.text(280, 0, 'Enter ▶', {
+      fontSize: '16px',
+      color: '#4a90e2',
+    });
+    playText.setOrigin(0.5);
+
+    row.add([bg, name, energy, playText]);
+    row.setSize(700, 55);
+    row.setInteractive({ useHandCursor: true });
+    row.on('pointerdown', async () => {
+      try {
+        const battle = await dungeonService.enterDungeon(dungeon.id);
+        this.scene.start(SCENE_KEYS.BATTLE, { dungeon, battle: battle || undefined });
+      } catch (error) {
+        this.showToast('Not enough energy or dungeon error');
+        console.error('Enter dungeon error:', error);
+      }
+    });
+  }
+
+  private showToast(message: string): void {
+    const width = this.cameras.main.width;
+    const toast = this.add.text(width / 2, 520, message, {
+      fontSize: '16px',
+      color: '#ffffff',
+      backgroundColor: '#000000',
+      padding: { left: 10, right: 10, top: 6, bottom: 6 },
+    });
+    toast.setOrigin(0.5);
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      duration: 1200,
+      onComplete: () => toast.destroy(),
     });
   }
 

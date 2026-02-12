@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"collection-game/internal/domain"
@@ -12,6 +13,7 @@ type UserUseCase interface {
 	GetProfile(ctx context.Context, userID int64) (*domain.UserProfile, error)
 	GetFullUser(ctx context.Context, userID int64) (*domain.User, error)
 	UpdateEnergy(ctx context.Context, userID int64) error
+	UpdateProfile(ctx context.Context, userID int64, username, email string) (*domain.UserProfile, error)
 }
 
 type userUseCase struct {
@@ -55,6 +57,36 @@ func (uc *userUseCase) UpdateEnergy(ctx context.Context, userID int64) error {
 	}
 
 	return uc.calculateAndUpdateEnergy(ctx, user)
+}
+
+func (uc *userUseCase) UpdateProfile(ctx context.Context, userID int64, username, email string) (*domain.UserProfile, error) {
+	user, err := uc.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if username == "" || email == "" {
+		return nil, fmt.Errorf("username and email are required")
+	}
+
+	if user.Username != username {
+		if existing, _ := uc.userRepo.GetByUsername(ctx, username); existing != nil && existing.ID != userID {
+			return nil, fmt.Errorf("username already exists")
+		}
+	}
+	if user.Email != email {
+		if existing, _ := uc.userRepo.GetByEmail(ctx, email); existing != nil && existing.ID != userID {
+			return nil, fmt.Errorf("email already exists")
+		}
+	}
+
+	if err := uc.userRepo.UpdateProfile(ctx, userID, username, email); err != nil {
+		return nil, err
+	}
+
+	user.Username = username
+	user.Email = email
+	return user.ToProfile(), nil
 }
 
 // calculateAndUpdateEnergy calculates energy regen and updates if needed

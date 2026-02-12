@@ -1,9 +1,26 @@
 // Game Configuration
+const DEFAULT_API_BASE_URL = typeof window !== 'undefined'
+  ? window.location.origin
+  : 'http://localhost';
+
+const DEFAULT_WS_URL = typeof window !== 'undefined'
+  ? window.location.origin.replace(/^http/, 'ws')
+  : 'ws://localhost';
+
+const IS_PRODUCTION = import.meta.env.MODE === 'production';
+const RESOLVED_API_BASE_URL = IS_PRODUCTION
+  ? DEFAULT_API_BASE_URL
+  : (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL);
+
+const RESOLVED_WS_URL = IS_PRODUCTION
+  ? DEFAULT_WS_URL
+  : (import.meta.env.VITE_WS_URL || DEFAULT_WS_URL);
+
 export const GAME_CONFIG = {
   WIDTH: 1280,
   HEIGHT: 720,
-  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
-  WS_URL: import.meta.env.VITE_WS_URL || 'ws://localhost:8080',
+  API_BASE_URL: RESOLVED_API_BASE_URL,
+  WS_URL: RESOLVED_WS_URL,
   API_VERSION: 'v1',
   TOKEN_REFRESH_INTERVAL: 14 * 60 * 1000, // 14 minutes (before 15min expiry)
   REQUEST_TIMEOUT: 10000,
@@ -12,9 +29,9 @@ export const GAME_CONFIG = {
 
 // Responsive Breakpoints (반응형 브레이크포인트)
 export const BREAKPOINTS = {
-  MOBILE: 767,      // ~ 767px: 모바일
-  TABLET: 1279,     // 768px ~ 1279px: 태블릿
-  DESKTOP: 1280,    // 1280px ~: 데스크톱
+  MOBILE: 767,      // 모바일 중심 UI 기준
+  TABLET: 1279,     // 태블릿 (모바일 UI 스케일)
+  DESKTOP: 1280,    // 데스크톱 (모바일 UI 스케일)
 };
 
 // Device Detection Helper
@@ -34,6 +51,7 @@ export const isTouchDevice = (): boolean => {
 export const SCENE_KEYS = {
   BOOT: 'BootScene',
   LOGIN: 'LoginScene',
+  TUTORIAL: 'TutorialScene',
   LOBBY: 'LobbyScene',
   CHARACTER_LIST: 'CharacterListScene',
   CHARACTER_DETAIL: 'CharacterDetailScene',
@@ -44,6 +62,8 @@ export const SCENE_KEYS = {
   GUILD: 'GuildScene',
   SHOP: 'ShopScene',
   INVENTORY: 'InventoryScene',
+  SETTINGS: 'SettingsScene',
+  CREDITS: 'CreditsScene',
 };
 
 // Character Elements
@@ -184,32 +204,63 @@ export const ENERGY_CONFIG = {
   RECOVERY_INTERVAL: 5 * 60 * 1000, // 5 minutes in milliseconds
 };
 
-// Colors
+// Colors - Fantasy UI Palette (Gold + Crystal)
 export const COLORS = {
-  PRIMARY: 0x4a90e2,
-  SECONDARY: 0x7b68ee,
-  SUCCESS: 0x50c878,
-  DANGER: 0xe74c3c,
-  WARNING: 0xf39c12,
-  INFO: 0x3498db,
-  LIGHT: 0xecf0f1,
-  DARK: 0x2c3e50,
+  // Primary Colors - Gold Theme
+  PRIMARY: 0xd4af37,        // Gold
+  PRIMARY_DARK: 0xb08a2e,   // Antique Gold
+  PRIMARY_LIGHT: 0xf1d27a,  // Pale Gold
+  
+  // Secondary Colors - Crystal Blue
+  SECONDARY: 0x3fb6c6,      // Crystal Blue
+  SECONDARY_DARK: 0x2a8f9b, // Deep Teal
+  SECONDARY_LIGHT: 0x7ad4df, // Light Crystal
+  
+  // Status Colors
+  SUCCESS: 0x4caf50,        // Green
+  SUCCESS_LIGHT: 0x7bd37f,
+  DANGER: 0xe53935,         // Red
+  DANGER_LIGHT: 0xf07c79,
+  WARNING: 0xf2b705,        // Amber
+  WARNING_LIGHT: 0xf7d26a,
+  INFO: 0x4b9fde,           // Sapphire
+  INFO_LIGHT: 0x7cc1f0,
+  
+  // Neutral Colors (Warm)
+  LIGHT: 0xf1ede3,
+  DARK: 0x2a2620,
+  DARKER: 0x17140f,
   WHITE: 0xffffff,
   BLACK: 0x000000,
   
-  // Grade Colors
-  GRADE_1: 0x808080,
-  GRADE_2: 0x00ff00,
-  GRADE_3: 0x0070dd,
-  GRADE_4: 0xa335ee,
-  GRADE_5: 0xff8000,
+  // Text Colors
+  TEXT_PRIMARY: 0xf4efe3,
+  TEXT_SECONDARY: 0xc8c1b3,
+  TEXT_MUTED: 0x9a907f,
+  
+  // Background Gradients
+  BG_START: 0x18150f,
+  BG_END: 0x2a261e,
+  BG_ACCENT: 0x3a3327,
+  
+  // Grade Colors - Fantasy
+  GRADE_1: 0x8f8a7a,
+  GRADE_2: 0x3c9d63,
+  GRADE_3: 0x2f6fd6,
+  GRADE_4: 0x8f6bd9,
+  GRADE_5: 0xd4af37,
   
   // Element Colors
-  ELEMENT_FIRE: 0xff4500,
-  ELEMENT_WATER: 0x1e90ff,
-  ELEMENT_WIND: 0x32cd32,
-  ELEMENT_LIGHT: 0xffd700,
-  ELEMENT_DARK: 0x8b008b,
+  ELEMENT_FIRE: 0xd96b2b,
+  ELEMENT_WATER: 0x2a83c8,
+  ELEMENT_WIND: 0x3aa06a,
+  ELEMENT_LIGHT: 0xf2c35c,
+  ELEMENT_DARK: 0x5f3b86,
+  
+  // UI Accent Colors
+  GOLD: 0xd4af37,
+  SILVER: 0xbcb4a5,
+  BRONZE: 0x9c6b2f,
 };
 
 // UI Constants
@@ -218,11 +269,26 @@ export const UI = {
   BUTTON_HEIGHT: 50,
   BUTTON_WIDTH: 150,
   PANEL_PADDING: 15,
+  BORDER_RADIUS: 12,
+  SHADOW_OFFSET: 4,
+  SHADOW_BLUR: 8,
+  FONTS: {
+    TITLE: '"Cinzel", "Noto Serif KR", serif',
+    BODY: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
+    UI: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
+  },
   FONT_SIZE: {
+    TINY: 12,
     SMALL: 14,
     MEDIUM: 18,
     LARGE: 24,
     XLARGE: 32,
+    HUGE: 48,
+  },
+  ANIMATION: {
+    FAST: 150,
+    NORMAL: 300,
+    SLOW: 500,
   },
 };
 

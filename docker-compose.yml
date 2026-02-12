@@ -47,6 +47,8 @@ services:
       dockerfile: Dockerfile
     container_name: collection_game_backend
     restart: unless-stopped
+    ports:
+      - "8080:8080"
     environment:
       # Server
       SERVER_HOST: 0.0.0.0

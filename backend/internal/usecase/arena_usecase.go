@@ -12,14 +12,14 @@ import (
 
 type ArenaUseCase struct {
 	arenaRepo     *repository.ArenaRepository
-	userRepo      *repository.UserRepository
-	characterRepo *repository.CharacterRepository
+	userRepo      repository.UserRepository
+	characterRepo repository.CharacterRepository
 }
 
 func NewArenaUseCase(
 	arenaRepo *repository.ArenaRepository,
-	userRepo *repository.UserRepository,
-	characterRepo *repository.CharacterRepository,
+	userRepo repository.UserRepository,
+	characterRepo repository.CharacterRepository,
 ) *ArenaUseCase {
 	return &ArenaUseCase{
 		arenaRepo:     arenaRepo,
@@ -43,7 +43,7 @@ func (uc *ArenaUseCase) SetDefenseTeam(ctx context.Context, userID int64, charac
 
 	// Validate that user owns all characters
 	for _, charID := range characterIDs {
-		_, err := uc.characterRepo.GetUserCharacter(ctx, charID, userID)
+		_, err := uc.characterRepo.GetUserCharacterByID(ctx, charID)
 		if err != nil {
 			return errors.New("character not found or not owned")
 		}
@@ -116,7 +116,7 @@ func (uc *ArenaUseCase) Attack(ctx context.Context, attackerID int64, defenderID
 	// Record battle history
 	attackerTeamJSON, _ := json.Marshal(attackerTeam)
 	defenderTeamJSON, _ := json.Marshal(defenderTeam)
-	
+
 	winnerID := attackerID
 	if !won {
 		winnerID = defenderID
@@ -155,13 +155,13 @@ func (uc *ArenaUseCase) simulateBattle(attackerTeam []int64, defenderTeam []int6
 	// TODO: Implement actual battle simulation
 	// For now, use a simple random-based approach with slight advantage to attacker
 	// Real implementation should consider character stats, skills, etc.
-	
+
 	attackerPower := len(attackerTeam) * 100
 	defenderPower := len(defenderTeam) * 95 // Slight disadvantage for defender
-	
+
 	// Simple probability calculation
-	winChance := float64(attackerPower) / float64(attackerPower + defenderPower)
-	
+	winChance := float64(attackerPower) / float64(attackerPower+defenderPower)
+
 	// For now, return true if win chance > 0.5 (deterministic for testing)
 	return winChance > 0.5
 }
@@ -171,7 +171,7 @@ func (uc *ArenaUseCase) calculateRatingChange(attackerRating int, defenderRating
 	const K = 32.0 // K-factor for ELO
 
 	expectedScore := 1.0 / (1.0 + math.Pow(10, float64(defenderRating-attackerRating)/400.0))
-	
+
 	actualScore := 0.0
 	if won {
 		actualScore = 1.0

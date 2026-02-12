@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"collection-game/internal/domain"
 )
@@ -16,6 +17,10 @@ type UserRepository interface {
 	Update(ctx context.Context, user *domain.User) error
 	UpdateEnergy(ctx context.Context, userID int64, energy int) error
 	UpdateCurrency(ctx context.Context, userID int64, crystals, gold int64) error
+	AddExp(ctx context.Context, userID int64, exp int64) error
+	AddEnergy(ctx context.Context, userID int64, energy int) error
+	UpdateLastLogin(ctx context.Context, userID int64, lastLogin time.Time) error
+	UpdateProfile(ctx context.Context, userID int64, username, email string) error
 }
 
 type userRepository struct {
@@ -28,29 +33,29 @@ func NewUserRepository(db *sql.DB) UserRepository {
 
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	query := `
-		INSERT INTO users (username, email, password_hash, level, exp, crystals, gold, energy, max_energy, last_energy_update)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, created_at, updated_at
+		INSERT INTO users (username, email, password_hash, level, exp, crystals, gold, energy, max_energy, last_energy_update, last_login)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, created_at, updated_at, last_login
 	`
 	return r.db.QueryRowContext(
 		ctx, query,
 		user.Username, user.Email, user.PasswordHash,
 		user.Level, user.Exp, user.Crystals, user.Gold,
-		user.Energy, user.MaxEnergy, user.LastEnergyUpdate,
-	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+		user.Energy, user.MaxEnergy, user.LastEnergyUpdate, user.LastLogin,
+	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.LastLogin)
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id int64) (*domain.User, error) {
 	query := `
 		SELECT id, username, email, password_hash, level, exp, crystals, gold,
-		       energy, max_energy, last_energy_update, created_at, updated_at
+		       energy, max_energy, last_energy_update, last_login, created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	user := &domain.User{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Level, &user.Exp, &user.Crystals, &user.Gold,
-		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate,
+		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate, &user.LastLogin,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -62,39 +67,45 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 func (r *userRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	query := `
 		SELECT id, username, email, password_hash, level, exp, crystals, gold,
-		       energy, max_energy, last_energy_update, created_at, updated_at
+		       energy, max_energy, last_energy_update, last_login, created_at, updated_at
 		FROM users WHERE username = $1
 	`
 	user := &domain.User{}
 	err := r.db.QueryRowContext(ctx, query, username).Scan(
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Level, &user.Exp, &user.Crystals, &user.Gold,
-		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate,
+		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate, &user.LastLogin,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, err
 	}
-	return user, err
+	return user, nil
 }
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `
 		SELECT id, username, email, password_hash, level, exp, crystals, gold,
-		       energy, max_energy, last_energy_update, created_at, updated_at
+		       energy, max_energy, last_energy_update, last_login, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	user := &domain.User{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Level, &user.Exp, &user.Crystals, &user.Gold,
-		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate,
+		&user.Energy, &user.MaxEnergy, &user.LastEnergyUpdate, &user.LastLogin,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, err
 	}
-	return user, err
+	return user, nil
 }
 
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
@@ -102,14 +113,14 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		UPDATE users 
 		SET username = $1, email = $2, level = $3, exp = $4, 
 		    crystals = $5, gold = $6, energy = $7, max_energy = $8,
-		    last_energy_update = $9
-		WHERE id = $10
+		    last_energy_update = $9, last_login = $10
+		WHERE id = $11
 	`
 	_, err := r.db.ExecContext(
 		ctx, query,
 		user.Username, user.Email, user.Level, user.Exp,
 		user.Crystals, user.Gold, user.Energy, user.MaxEnergy,
-		user.LastEnergyUpdate, user.ID,
+		user.LastEnergyUpdate, user.LastLogin, user.ID,
 	)
 	return err
 }
@@ -123,5 +134,29 @@ func (r *userRepository) UpdateEnergy(ctx context.Context, userID int64, energy 
 func (r *userRepository) UpdateCurrency(ctx context.Context, userID int64, crystals, gold int64) error {
 	query := `UPDATE users SET crystals = crystals + $1, gold = gold + $2 WHERE id = $3`
 	_, err := r.db.ExecContext(ctx, query, crystals, gold, userID)
+	return err
+}
+
+func (r *userRepository) AddExp(ctx context.Context, userID int64, exp int64) error {
+	query := `UPDATE users SET exp = exp + $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, exp, userID)
+	return err
+}
+
+func (r *userRepository) AddEnergy(ctx context.Context, userID int64, energy int) error {
+	query := `UPDATE users SET energy = LEAST(energy + $1, max_energy), last_energy_update = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, energy, userID)
+	return err
+}
+
+func (r *userRepository) UpdateLastLogin(ctx context.Context, userID int64, lastLogin time.Time) error {
+	query := `UPDATE users SET last_login = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, lastLogin, userID)
+	return err
+}
+
+func (r *userRepository) UpdateProfile(ctx context.Context, userID int64, username, email string) error {
+	query := `UPDATE users SET username = $1, email = $2, updated_at = NOW() WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, username, email, userID)
 	return err
 }
