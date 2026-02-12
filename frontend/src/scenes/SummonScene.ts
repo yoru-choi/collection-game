@@ -466,16 +466,21 @@ export class SummonScene extends Phaser.Scene {
           this.currencyText.setText(`💎 ${profile.crystals}`);
         }
       }
-
-      const characters = await characterService.getCharacterList();
-      if (characters.length > 0) {
-        this.gameData.setUserCharacters(characters);
-      }
     } catch (error) {
       this.showToast('Summon failed. Check crystals.');
       console.error('Summon error:', error);
       this.isAnimating = false;
       return;
+    }
+
+    try {
+      const characters = await characterService.getCharacterList();
+      if (characters.length > 0) {
+        this.gameData.setUserCharacters(characters);
+      }
+    } catch (error) {
+      this.showToast('Character list refresh failed.');
+      console.error('Character list refresh error:', error);
     }
 
     // Play summon animation

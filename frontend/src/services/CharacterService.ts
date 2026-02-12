@@ -20,7 +20,7 @@ export class CharacterService {
       );
     } catch (error) {
       console.error('Get character list error:', error);
-      return [];
+      throw error;
     }
   }
 

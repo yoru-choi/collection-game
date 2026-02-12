@@ -58,10 +58,18 @@ export class CharacterListScene extends Phaser.Scene {
       const characters = await characterService.getCharacterList();
       this.characters = characters;
       this.gameData.setUserCharacters(characters);
+      if (this.statusText) {
+        this.statusText.setVisible(false);
+      }
       this.scene.restart();
     } catch (error) {
       if (this.statusText) {
-        this.statusText.setText('Failed to load characters');
+        const hasCache = this.gameData.getUserCharacters().length > 0;
+        this.statusText.setText(
+          hasCache
+            ? 'Server unavailable. Showing cached characters.'
+            : 'Server unavailable. Start the backend and try again.'
+        );
       }
       console.error('Failed to load characters:', error);
     }
