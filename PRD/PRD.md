@@ -134,6 +134,39 @@
 3. **다음 세션 목표 제안**: 다음 스토리 스테이지, 강화 대상 1개 추천
 4. **휴식 안내**: 내일 보상/리셋 시간 안내 + 종료 버튼 노출
 
+### 1.10 게임 진행 프로세스 (MVP 기준)
+플레이어가 실제로 움직이는 흐름을 상태 전이 관점으로 정리한다. 세부 규칙은 각 문서에 위임한다.
+
+**상태 정의**
+- **Lobby**: 로비(메뉴, 공지, 이동 허브)
+- **PartyEdit**: 파티 편성/변경
+- **DungeonSelect**: 던전 선택/난이도 선택
+- **Battle**: 전투 진행
+- **Result**: 승패/보상 요약
+- **RewardClaim**: 보상 수령/확정
+- **ShopSummon**: 상점/소환
+- **Growth**: 레벨업/각성
+
+**핵심 진행 흐름**
+1. **Login/Tutorial** → Lobby 진입
+2. **Lobby** → PartyEdit (신규 캐릭터 확보 시 우선 유도)
+3. **PartyEdit** → DungeonSelect
+4. **DungeonSelect**
+  - 에너지 충분: Battle 진입
+  - 에너지 부족: ShopSummon(에너지 구매) 또는 Daily로 유도
+5. **Battle** → Result
+6. **Result** → RewardClaim (보상 확정)
+7. **RewardClaim** → (선택) ShopSummon 또는 Growth
+8. **ShopSummon/Growth** → Lobby 복귀
+9. **반복**: 다음 스테이지/일일 미션 진행
+
+**저장/동기화 원칙**
+- Battle 시작 시 파티 스냅샷 저장
+- Battle 종료 시 결과 확정 후 보상/경험치 반영
+- 보상 수령은 단일 트랜잭션으로 처리
+
+관련 상세는 [PRD/CHARACTER.md](PRD/CHARACTER.md), [PRD/BATTLE.md](PRD/BATTLE.md), [PRD/CONTENT.md](PRD/CONTENT.md), [PRD/SHOP.md](PRD/SHOP.md) 참고
+
 ---
 
 ## 2. 게임 시스템 (MVP)

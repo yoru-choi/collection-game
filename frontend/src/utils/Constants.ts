@@ -326,3 +326,25 @@ export const PAGINATION = {
   DEFAULT_LIMIT: 20,
   MAX_LIMIT: 100,
 };
+
+// Battle Configuration
+export const BATTLE_CONFIG = {
+  POLL_INTERVAL_AUTO: 500,      // ms - polling interval during auto battle
+  POLL_INTERVAL_MANUAL: 300,    // ms - polling interval during manual wait
+  TICK_INTERVAL: 100,           // ms - server tick interval
+  ATB_MAX: 100,
+  LOCAL_ATB_INTERPOLATION: true,
+  ANIMATION_DURATION: {
+    ATTACK: 400,
+    SKILL: 600,
+    HEAL: 500,
+    DAMAGE_NUMBER: 800,
+    DEATH: 600,
+    WAVE_TRANSITION: 1000,
+  },
+  DAMAGE_COLORS: {
+    NORMAL: '#ffffff',
+    CRITICAL: '#ff4444',
+    HEAL: '#44ff44',
+  },
+};

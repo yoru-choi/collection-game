@@ -26,6 +26,7 @@ func NewRouter(
 	questHandler *QuestHandler,
 	guildHandler *GuildHandler,
 	shopHandler *ShopHandler,
+	battleHandler *BattleHandler,
 	wsHandler *WebSocketHandler,
 	docsHandler *DocsHandler,
 ) *Router {
@@ -119,6 +120,14 @@ func NewRouter(
 	protected.HandleFunc("/shop/items", shopHandler.GetItems).Methods("GET")
 	protected.HandleFunc("/shop/purchase", shopHandler.Purchase).Methods("POST")
 	protected.HandleFunc("/shop/history", shopHandler.GetPurchaseHistory).Methods("GET")
+
+	// Battle routes
+	protected.HandleFunc("/battle/{id:[0-9]+}/state", battleHandler.GetState).Methods("GET")
+	protected.HandleFunc("/battle/{id:[0-9]+}/action", battleHandler.SubmitAction).Methods("POST")
+	protected.HandleFunc("/battle/{id:[0-9]+}/auto", battleHandler.SetAutoMode).Methods("POST")
+	protected.HandleFunc("/battle/{id:[0-9]+}/speed", battleHandler.SetSpeed).Methods("POST")
+	protected.HandleFunc("/battle/{id:[0-9]+}/surrender", battleHandler.Surrender).Methods("POST")
+	protected.HandleFunc("/battle/{id:[0-9]+}/result", battleHandler.GetResult).Methods("GET")
 
 	// WebSocket route
 	r.HandleFunc("/ws", wsHandler.HandleConnection)

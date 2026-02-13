@@ -1,347 +1,604 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, COLORS } from '@/utils/Constants';
+import { SCENE_KEYS, COLORS, BATTLE_CONFIG } from '@/utils/Constants';
 import { addSceneFrame } from '@/utils/SceneFrame';
-import { BattleState, BattleStart, BattleTeamMember, Dungeon, UserCharacter } from '@/types';
+import {
+  BattleStateResponse,
+  BattleUnitState,
+  BattleResultResponse,
+  Dungeon,
+} from '@/types';
+import { battleService } from '@/services/BattleService';
 import { dungeonService } from '@/services/DungeonService';
 import { userService } from '@/services/UserService';
 import { GameDataStore } from '@/store/GameDataStore';
-import { getMonsterImageKey } from '@/utils/monsterImages';
+import { BattleUnitDisplay } from '@/objects/battle/BattleUnitDisplay';
+import { SkillPanel } from '@/objects/battle/SkillPanel';
+import { TurnOrderBar } from '@/objects/battle/TurnOrderBar';
+import { AnimationLayer } from '@/objects/battle/AnimationLayer';
+import { BattleTopBar } from '@/objects/battle/BattleTopBar';
+import { ResultOverlay } from '@/objects/battle/ResultOverlay';
+
+interface BattleSceneData {
+  battleId?: number;
+  dungeon?: Dungeon;
+}
 
 export class BattleScene extends Phaser.Scene {
-  private battleState!: BattleState | null;
-  private isAutoPlay: boolean = false;
-  private battleSpeed: number = 1;
+  private battleId: number = 0;
   private dungeon?: Dungeon;
-  private battleStart?: BattleStart;
-  private startedAt?: number;
   private gameData!: GameDataStore;
-  private resultOverlay?: Phaser.GameObjects.Container;
+
+  // State
+  private battleState?: BattleStateResponse;
+  private pollTimer?: Phaser.Time.TimerEvent;
+  private isPolling: boolean = false;
+  private targetSelectMode: boolean = false;
+  private selectedSkillIndex: number = -1;
+  private selectedSkillTargetType: string = '';
+
+  // UI components
+  private allyDisplays: Map<string, BattleUnitDisplay> = new Map();
+  private enemyDisplays: Map<string, BattleUnitDisplay> = new Map();
+  private skillPanel!: SkillPanel;
+  private turnOrderBar!: TurnOrderBar;
+  private animationLayer!: AnimationLayer;
+  private topBar!: BattleTopBar;
+  private resultOverlay?: ResultOverlay;
+  private targetHint?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: SCENE_KEYS.BATTLE });
   }
 
-  init(data: { dungeon?: Dungeon; battle?: BattleStart }): void {
+  init(data: BattleSceneData): void {
+    this.battleId = data?.battleId || 0;
     this.dungeon = data?.dungeon;
-    this.battleStart = data?.battle;
+    // Reset state
+    this.battleState = undefined;
+    this.allyDisplays.clear();
+    this.enemyDisplays.clear();
+    this.targetSelectMode = false;
+    this.selectedSkillIndex = -1;
   }
 
   create(): void {
     this.gameData = GameDataStore.getInstance();
-    this.startedAt = Date.now();
 
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    this.add.rectangle(0, 0, width, height, 0x1a1a2e).setOrigin(0);
+    // Background
     this.add.rectangle(0, 0, width, height, COLORS.DARKER).setOrigin(0);
-    // Battle UI
-    const topBar = this.add.graphics();
-    topBar.fillStyle(COLORS.DARK, 0.9);
-    topBar.fillRoundedRect(0, 0, width, 80, { tl: 0, tr: 0, bl: 16, br: 16 });
-    topBar.lineStyle(2, COLORS.GOLD, 0.6);
-    topBar.strokeRoundedRect(0, 0, width, 80, { tl: 0, tr: 0, bl: 16, br: 16 });
-    const titleText = this.dungeon
-      ? `Battle: ${this.dungeon.chapter}-${this.dungeon.stage}`
-      : 'Battle Scene';
 
-    this.add.text(width / 2, 40, titleText, {
-      fontSize: '32px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
+    // Top bar
+    this.topBar = new BattleTopBar(this, 0, 0, width, () => this.showMenuOverlay());
 
-    // Player team (left side)
-    this.createTeamDisplay(240, height / 2 + 20, 'Player', true, this.getPlayerTeam());
+    // Turn order bar
+    this.turnOrderBar = new TurnOrderBar(this, width / 2, 70);
 
-    // Enemy team (right side)
-    this.createTeamDisplay(width - 240, height / 2 + 20, 'Enemy', false, this.getEnemyTeam());
+    // Skill panel at bottom
+    this.skillPanel = new SkillPanel(this, width / 2 + 80, height - 40, {
+      onSkillSelected: (idx) => this.onSkillSelected(idx),
+      onAutoToggle: (auto) => this.onAutoToggle(auto),
+      onSpeedToggle: (speed) => this.onSpeedToggle(speed),
+    });
 
-    // Battle controls
-    this.createBattleControls(width, height);
-    this.add.text(width / 2, height - 120, 'Battle system under construction', {
-      fontSize: '20px',
-      color: '#f39c12',
-    }).setOrigin(0.5);
+    // Animation layer
+    const allDisplays = new Map<string, BattleUnitDisplay>();
+    this.animationLayer = new AnimationLayer(this, allDisplays);
 
-    // Back button
-    this.createBackButton();
+    // Target selection hint
+    this.targetHint = this.add.text(width / 2, height - 80, '', {
+      fontSize: '14px',
+      color: '#ffcc00',
+    });
+    this.targetHint.setOrigin(0.5);
+    this.targetHint.setVisible(false);
 
-    // MVP: Complete button to simulate victory
-    this.createCompleteButton(width / 2, height - 160);
+    // Load initial state
+    if (this.battleId > 0) {
+      this.loadInitialState();
+    } else {
+      this.add.text(width / 2, height / 2, 'No battle ID provided', {
+        fontSize: '20px',
+        color: '#ff4444',
+      }).setOrigin(0.5);
+      this.createBackButton();
+    }
 
     addSceneFrame(this);
   }
 
-  private createTeamDisplay(
-    x: number,
-    y: number,
-    label: string,
-    isPlayer: boolean,
-    team: BattleTeamMember[]
-  ): void {
-    this.add.text(x, y - 200, label, {
-      fontSize: '24px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    // Display 4 character positions
-    for (let i = 0; i < 4; i++) {
-      const charY = y - 100 + i * 80;
-      this.createCharacterSlot(x, charY, i, isPlayer, team[i]);
-    }
-  }
-
-  private createCharacterSlot(
-    x: number,
-    y: number,
-    index: number,
-    isPlayer: boolean,
-    member?: BattleTeamMember
-  ): void {
-    const slot = this.add.container(x, y);
-
-    const bg = this.add.rectangle(0, 0, 150, 60, COLORS.PRIMARY, 0.3);
-    bg.setStrokeStyle(2, COLORS.LIGHT);
-
-    const spriteKey = member
-      ? getMonsterImageKey({
-          id: member.characterId,
-          character: { id: member.characterId, name: member.name },
-        })
-      : getMonsterImageKey({ id: `enemy-${index}-${isPlayer ? 'p' : 'e'}` });
-    const sprite = this.add.sprite(-40, 0, spriteKey);
-    sprite.setScale(0.4);
-
-    const hpBar = this.add.graphics();
-    hpBar.fillStyle(0xe74c3c);
-    const hpRatio = member && member.maxHp > 0
-      ? Math.max(member.currentHp / member.maxHp, 0)
-      : 1;
-    hpBar.fillRect(10, -15, 60 * hpRatio, 8);
-
-    const nameText = member ? member.name : `Char ${index + 1}`;
-    const name = this.add.text(40, 15, nameText, {
-      fontSize: '12px',
-      color: '#ffffff',
-    });
-
-    slot.add([bg, sprite, hpBar, name]);
-  }
-
-  private getPlayerTeam(): BattleTeamMember[] {
-    if (this.battleStart?.playerTeam?.length) {
-      return this.battleStart.playerTeam;
-    }
-
-    const characters = this.gameData.getUserCharacters() || [];
-    return characters.slice(0, 4).map((character, index) =>
-      this.mapUserCharacterToTeamMember(character, index)
-    );
-  }
-
-  private getEnemyTeam(): BattleTeamMember[] {
-    if (this.battleStart?.enemyTeam?.length) {
-      return this.battleStart.enemyTeam;
-    }
-
-    return Array.from({ length: 4 }, (_, index) => ({
-      id: `enemy-${index}`,
-      characterId: `enemy-${index}`,
-      name: `Enemy ${index + 1}`,
-      grade: 1,
-      element: 'dark',
-      class: 'warrior',
-      imageUrl: '',
-      level: 1,
-      position: index,
-      currentHp: 100,
-      maxHp: 100,
-      atk: 50,
-      def: 30,
-      spd: 60,
-    }));
-  }
-
-  private mapUserCharacterToTeamMember(character: UserCharacter, position: number): BattleTeamMember {
-    return {
-      id: character.id,
-      userCharacterId: character.id,
-      characterId: character.characterId,
-      name: character.character.name,
-      grade: character.character.grade,
-      element: character.character.element,
-      class: character.character.class,
-      imageUrl: character.character.imageUrl,
-      level: character.level,
-      position,
-      currentHp: character.currentHp,
-      maxHp: character.currentHp,
-      atk: character.currentAtk,
-      def: character.currentDef,
-      spd: character.currentSpd,
-    };
-  }
-
-  private createBattleControls(width: number, height: number): void {
-    const controlY = height - 50;
-
-    // Auto button
-    this.createControlButton(width / 2 - 200, controlY, 'Auto', () => {
-      this.isAutoPlay = !this.isAutoPlay;
-      console.log('Auto play:', this.isAutoPlay);
-    });
-
-    // Speed button
-    this.createControlButton(width / 2 - 80, controlY, `x${this.battleSpeed}`, () => {
-      this.battleSpeed = this.battleSpeed === 3 ? 1 : this.battleSpeed + 1;
-      console.log('Battle speed:', this.battleSpeed);
-    });
-
-    // Pause button
-    this.createControlButton(width / 2 + 40, controlY, 'Pause', () => {
-      console.log('Battle paused');
-    });
-
-    // Retreat button
-    this.createControlButton(width / 2 + 160, controlY, 'Retreat', () => {
-      this.scene.start(SCENE_KEYS.DUNGEON_SELECT);
-    });
-  }
-
-  private createCompleteButton(x: number, y: number): void {
-    const button = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 180, 45, COLORS.SUCCESS, 0.9);
-    bg.setStrokeStyle(2, COLORS.LIGHT);
-    const text = this.add.text(0, 0, 'Complete (Win)', {
-      fontSize: '16px',
-      color: '#ffffff',
-    });
-    text.setOrigin(0.5);
-    button.add([bg, text]);
-    button.setSize(180, 45);
-    button.setInteractive({ useHandCursor: true });
-    button.on('pointerdown', () => this.handleComplete());
-  }
-
-  private async handleComplete(): Promise<void> {
-    if (!this.dungeon) {
-      this.scene.start(SCENE_KEYS.DUNGEON_SELECT);
-      return;
-    }
-
-    const timeTaken = this.startedAt ? Math.floor((Date.now() - this.startedAt) / 1000) : 0;
-    try {
-      await dungeonService.completeDungeon(this.dungeon.id, 3, timeTaken);
-      const profile = await userService.getProfile();
-      if (profile) {
-        this.gameData.setPlayerData(profile);
+  update(time: number, delta: number): void {
+    // Local ATB interpolation
+    if (this.battleState && BATTLE_CONFIG.LOCAL_ATB_INTERPOLATION) {
+      if (this.battleState.phase === 'in_wave') {
+        const allUnits = [...(this.battleState.allies || []), ...(this.battleState.enemies || [])];
+        allUnits.forEach(unit => {
+          if (unit.isAlive && unit.atbGauge < BATTLE_CONFIG.ATB_MAX) {
+            const increment = (unit.spd / 100) * this.battleState!.speedMultiplier * (delta / BATTLE_CONFIG.TICK_INTERVAL);
+            unit.atbGauge = Math.min(BATTLE_CONFIG.ATB_MAX, unit.atbGauge + increment);
+          }
+        });
+        // Update displays
+        this.updateUnitDisplays();
+        this.turnOrderBar.updateOrder(allUnits);
       }
-      this.showToast('Dungeon completed! Rewards granted.');
-      this.showPostBattleActions();
-    } catch (error) {
-      this.showToast('Failed to complete dungeon');
-      console.error('Complete dungeon error:', error);
     }
   }
 
-  private showPostBattleActions(): void {
-    if (this.resultOverlay) {
-      this.resultOverlay.destroy();
+  private async loadInitialState(): Promise<void> {
+    const state = await battleService.getState(this.battleId);
+    if (state) {
+      this.onStateReceived(state);
+      this.startPolling();
+    } else {
+      const width = this.cameras.main.width;
+      const height = this.cameras.main.height;
+      this.add.text(width / 2, height / 2, 'Failed to load battle', {
+        fontSize: '20px',
+        color: '#ff4444',
+      }).setOrigin(0.5);
+      this.createBackButton();
     }
+  }
+
+  private onStateReceived(state: BattleStateResponse): void {
+    const isFirstState = !this.battleState;
+    this.battleState = state;
+
+    if (isFirstState) {
+      this.createUnitDisplays();
+    }
+
+    // Update all unit displays
+    this.updateAllUnits(state);
+
+    // Update top bar
+    this.topBar.updateWave(state.currentWave, state.totalWaves);
+    this.topBar.updateTurn(state.turnCounter);
+
+    // Update skill panel
+    this.skillPanel.setAutoMode(state.autoMode);
+    this.skillPanel.setSpeed(state.speedMultiplier);
+
+    // Update turn order
+    const allUnits = [...(state.allies || []), ...(state.enemies || [])];
+    this.turnOrderBar.updateOrder(allUnits);
+
+    // Play events
+    if (state.events && state.events.length > 0) {
+      this.animationLayer.queueEvents(state.events);
+    }
+
+    // Handle phase
+    switch (state.phase) {
+      case 'action_select':
+        this.handleActionSelect(state);
+        break;
+      case 'battle_end':
+        this.handleBattleEnd(state);
+        break;
+      default:
+        this.targetSelectMode = false;
+        this.targetHint?.setVisible(false);
+        this.clearTargetHighlights();
+        this.skillPanel.setEnabled(false);
+        break;
+    }
+  }
+
+  private createUnitDisplays(): void {
+    if (!this.battleState) return;
 
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
+    // Clear existing
+    this.allyDisplays.forEach(d => d.destroy());
+    this.enemyDisplays.forEach(d => d.destroy());
+    this.allyDisplays.clear();
+    this.enemyDisplays.clear();
+
+    // Create ally displays (bottom area)
+    const allyStartX = width * 0.15;
+    const allySpacing = width * 0.18;
+    const allyY = height * 0.62;
+
+    (this.battleState.allies || []).forEach((ally, i) => {
+      const x = allyStartX + i * allySpacing;
+      const display = new BattleUnitDisplay(this, x, allyY, ally);
+      this.allyDisplays.set(ally.unitId, display);
+    });
+
+    // Create enemy displays (top area)
+    const enemyStartX = width * 0.15;
+    const enemySpacing = width * 0.18;
+    const enemyY = height * 0.28;
+
+    (this.battleState.enemies || []).forEach((enemy, i) => {
+      const x = enemyStartX + i * enemySpacing;
+      const display = new BattleUnitDisplay(this, x, enemyY, enemy);
+      display.on('pointerdown', () => this.onTargetClicked(enemy));
+      this.enemyDisplays.set(enemy.unitId, display);
+    });
+
+    // Also make allies clickable for heal targeting
+    this.allyDisplays.forEach((display, unitId) => {
+      display.on('pointerdown', () => {
+        const unit = this.battleState?.allies?.find(a => a.unitId === unitId);
+        if (unit) this.onTargetClicked(unit);
+      });
+    });
+
+    // Update animation layer references
+    const allDisplays = new Map<string, BattleUnitDisplay>();
+    this.allyDisplays.forEach((v, k) => allDisplays.set(k, v));
+    this.enemyDisplays.forEach((v, k) => allDisplays.set(k, v));
+    this.animationLayer.updateUnitDisplays(allDisplays);
+  }
+
+  private updateAllUnits(state: BattleStateResponse): void {
+    (state.allies || []).forEach(ally => {
+      const display = this.allyDisplays.get(ally.unitId);
+      if (display) display.updateUnit(ally);
+    });
+
+    // Handle enemy display refresh on wave change
+    const currentEnemyIds = new Set((state.enemies || []).map(e => e.unitId));
+    const displayedEnemyIds = new Set(this.enemyDisplays.keys());
+
+    // Check if enemies changed (wave transition)
+    let enemiesChanged = false;
+    if (currentEnemyIds.size !== displayedEnemyIds.size) {
+      enemiesChanged = true;
+    } else {
+      currentEnemyIds.forEach(id => {
+        if (!displayedEnemyIds.has(id)) enemiesChanged = true;
+      });
+    }
+
+    if (enemiesChanged) {
+      this.recreateEnemyDisplays(state.enemies || []);
+    } else {
+      (state.enemies || []).forEach(enemy => {
+        const display = this.enemyDisplays.get(enemy.unitId);
+        if (display) display.updateUnit(enemy);
+      });
+    }
+  }
+
+  private recreateEnemyDisplays(enemies: BattleUnitState[]): void {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+
+    this.enemyDisplays.forEach(d => d.destroy());
+    this.enemyDisplays.clear();
+
+    const enemyStartX = width * 0.15;
+    const enemySpacing = width * 0.18;
+    const enemyY = height * 0.28;
+
+    enemies.forEach((enemy, i) => {
+      const x = enemyStartX + i * enemySpacing;
+      const display = new BattleUnitDisplay(this, x, enemyY, enemy);
+      display.on('pointerdown', () => this.onTargetClicked(enemy));
+      this.enemyDisplays.set(enemy.unitId, display);
+    });
+
+    // Update animation layer
+    const allDisplays = new Map<string, BattleUnitDisplay>();
+    this.allyDisplays.forEach((v, k) => allDisplays.set(k, v));
+    this.enemyDisplays.forEach((v, k) => allDisplays.set(k, v));
+    this.animationLayer.updateUnitDisplays(allDisplays);
+  }
+
+  private updateUnitDisplays(): void {
+    if (!this.battleState) return;
+    (this.battleState.allies || []).forEach(ally => {
+      const display = this.allyDisplays.get(ally.unitId);
+      if (display) display.updateUnit(ally);
+    });
+    (this.battleState.enemies || []).forEach(enemy => {
+      const display = this.enemyDisplays.get(enemy.unitId);
+      if (display) display.updateUnit(enemy);
+    });
+  }
+
+  // ============================================================
+  // Polling
+  // ============================================================
+
+  private startPolling(): void {
+    this.stopPolling();
+    const interval = this.getPollingInterval();
+    this.pollTimer = this.time.addEvent({
+      delay: interval,
+      callback: () => this.pollState(),
+      loop: true,
+    });
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      this.pollTimer.destroy();
+      this.pollTimer = undefined;
+    }
+  }
+
+  private getPollingInterval(): number {
+    if (!this.battleState) return BATTLE_CONFIG.POLL_INTERVAL_AUTO;
+    if (this.battleState.phase === 'action_select') return 0; // Don't poll during action select
+    if (this.battleState.autoMode) return BATTLE_CONFIG.POLL_INTERVAL_AUTO;
+    return BATTLE_CONFIG.POLL_INTERVAL_MANUAL;
+  }
+
+  private async pollState(): Promise<void> {
+    if (this.isPolling || !this.battleId) return;
+    if (this.battleState?.phase === 'action_select') return;
+    if (this.battleState?.phase === 'battle_end') {
+      this.stopPolling();
+      return;
+    }
+
+    this.isPolling = true;
+    try {
+      const state = await battleService.getState(this.battleId);
+      if (state) {
+        this.onStateReceived(state);
+
+        // Adjust polling interval based on phase
+        if (state.phase === 'action_select' || state.phase === 'battle_end') {
+          this.stopPolling();
+        }
+      }
+    } catch (error) {
+      console.error('Poll error:', error);
+    } finally {
+      this.isPolling = false;
+    }
+  }
+
+  // ============================================================
+  // Player Input Handling
+  // ============================================================
+
+  private handleActionSelect(state: BattleStateResponse): void {
+    this.stopPolling();
+    this.skillPanel.setEnabled(true);
+
+    // Find the active unit's skills
+    const activeUnit = (state.allies || []).find(a => a.unitId === state.activeUnitId);
+    if (activeUnit) {
+      this.skillPanel.updateSkills(activeUnit.skills, true);
+
+      // Highlight the active unit
+      const display = this.allyDisplays.get(activeUnit.unitId);
+      if (display) {
+        display.setTargetHighlight(true);
+      }
+    }
+  }
+
+  private onSkillSelected(slotIndex: number): void {
+    if (!this.battleState || this.battleState.phase !== 'action_select') return;
+
+    const activeUnit = (this.battleState.allies || []).find(
+      a => a.unitId === this.battleState!.activeUnitId
+    );
+    if (!activeUnit) return;
+
+    const skill = activeUnit.skills[slotIndex];
+    if (!skill || skill.currentCd > 0) return;
+
+    this.selectedSkillIndex = slotIndex;
+    this.selectedSkillTargetType = skill.targetType;
+
+    // Auto-target skills (self, all_enemies, all_allies)
+    if (skill.targetType === 'self' || skill.targetType === 'all_enemies' || skill.targetType === 'all_allies') {
+      this.submitAction(activeUnit.unitId, slotIndex, []);
+      return;
+    }
+
+    // Enter target selection mode
+    this.targetSelectMode = true;
+    this.targetHint?.setText(`Select target for: ${skill.name}`);
+    this.targetHint?.setVisible(true);
+
+    // Highlight valid targets
+    if (skill.targetType === 'single_enemy') {
+      this.enemyDisplays.forEach(d => {
+        if (d.getUnitData().isAlive) d.setTargetHighlight(true);
+      });
+    } else if (skill.targetType === 'single_ally') {
+      this.allyDisplays.forEach(d => {
+        if (d.getUnitData().isAlive) d.setTargetHighlight(true);
+      });
+    }
+  }
+
+  private onTargetClicked(unit: BattleUnitState): void {
+    if (!this.targetSelectMode || !this.battleState) return;
+
+    const activeUnitId = this.battleState.activeUnitId;
+    if (!activeUnitId) return;
+
+    // Validate target
+    if (this.selectedSkillTargetType === 'single_enemy' && unit.team !== 'enemy') return;
+    if (this.selectedSkillTargetType === 'single_ally' && unit.team !== 'ally') return;
+    if (!unit.isAlive) return;
+
+    this.submitAction(activeUnitId, this.selectedSkillIndex, [unit.unitId]);
+  }
+
+  private async submitAction(unitId: string, skillIndex: number, targetIds: string[]): Promise<void> {
+    this.targetSelectMode = false;
+    this.targetHint?.setVisible(false);
+    this.clearTargetHighlights();
+    this.skillPanel.setEnabled(false);
+
+    const state = await battleService.submitAction(this.battleId, {
+      unitId,
+      skillIndex,
+      targetIds,
+    });
+
+    if (state) {
+      this.onStateReceived(state);
+
+      // Resume polling if battle continues
+      if (state.phase !== 'action_select' && state.phase !== 'battle_end') {
+        this.startPolling();
+      }
+    }
+  }
+
+  private clearTargetHighlights(): void {
+    this.allyDisplays.forEach(d => d.setTargetHighlight(false));
+    this.enemyDisplays.forEach(d => d.setTargetHighlight(false));
+  }
+
+  private async onAutoToggle(auto: boolean): Promise<void> {
+    if (!this.battleId) return;
+    const state = await battleService.setAutoMode(this.battleId, auto);
+    if (state) {
+      this.onStateReceived(state);
+      if (state.phase !== 'action_select' && state.phase !== 'battle_end') {
+        this.startPolling();
+      }
+    }
+  }
+
+  private async onSpeedToggle(speed: number): Promise<void> {
+    if (!this.battleId) return;
+    await battleService.setSpeed(this.battleId, speed);
+  }
+
+  // ============================================================
+  // Battle End
+  // ============================================================
+
+  private async handleBattleEnd(state: BattleStateResponse): Promise<void> {
+    this.stopPolling();
+    this.skillPanel.setEnabled(false);
+    this.animationLayer.clearQueue();
+
+    // Get result from server
+    const result = await battleService.getResult(this.battleId);
+    if (!result) {
+      // Determine from state
+      const alliesAlive = (state.allies || []).some(a => a.isAlive);
+      const fakeResult: BattleResultResponse = {
+        battleId: this.battleId,
+        result: alliesAlive ? 'victory' : 'defeat',
+        wavesCleared: state.currentWave,
+        gold: 0,
+        exp: 0,
+        crystals: 0,
+      };
+      this.showResult(fakeResult);
+      return;
+    }
+
+    // If victory and dungeon, also complete the dungeon for rewards
+    if (result.result === 'victory' && this.dungeon) {
+      try {
+        await dungeonService.completeDungeon(this.dungeon.id, 3, 0);
+        const profile = await userService.getProfile();
+        if (profile) {
+          this.gameData.setPlayerData(profile);
+        }
+      } catch (e) {
+        console.error('Failed to complete dungeon:', e);
+      }
+    }
+
+    this.showResult(result);
+  }
+
+  private showResult(result: BattleResultResponse): void {
+    if (this.resultOverlay) return;
+    this.resultOverlay = new ResultOverlay(this, result, this.dungeon?.id);
+  }
+
+  // ============================================================
+  // Menu Overlay
+  // ============================================================
+
+  private showMenuOverlay(): void {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+
     const overlay = this.add.container(0, 0);
-    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.6).setOrigin(0);
+    overlay.setDepth(100);
+
+    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.5);
+    dim.setOrigin(0);
     dim.setInteractive();
+    overlay.add(dim);
 
-    const panel = this.add.rectangle(width / 2, height / 2, 500, 260, COLORS.DARK, 0.95);
+    const panel = this.add.rectangle(width / 2, height / 2, 300, 200, COLORS.DARK, 0.95);
     panel.setStrokeStyle(2, COLORS.LIGHT);
+    overlay.add(panel);
 
-    const title = this.add.text(width / 2, height / 2 - 90, 'Next Actions', {
+    const title = this.add.text(width / 2, height / 2 - 70, 'Menu', {
       fontSize: '22px',
       color: '#ffffff',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
+    overlay.add(title);
 
-    const buttonRowY = height / 2 - 20;
-    const buttonSpacing = 170;
-    this.createActionButton(width / 2 - buttonSpacing, buttonRowY, 'Shop', () => {
-      this.scene.start(SCENE_KEYS.SHOP);
+    // Resume button
+    const resumeBtn = this.createMenuButton(width / 2, height / 2 - 20, 'Resume', () => {
+      overlay.destroy();
     });
-    this.createActionButton(width / 2, buttonRowY, 'Summon', () => {
-      this.scene.start(SCENE_KEYS.SUMMON);
-    });
-    this.createActionButton(width / 2 + buttonSpacing, buttonRowY, 'Party', () => {
-      this.scene.start(SCENE_KEYS.CHARACTER_LIST);
-    });
+    overlay.add(resumeBtn);
 
-    this.createActionButton(width / 2, height / 2 + 70, 'Next Dungeon', () => {
+    // Surrender button
+    const surrenderBtn = this.createMenuButton(width / 2, height / 2 + 30, 'Surrender', async () => {
+      overlay.destroy();
+      await battleService.surrender(this.battleId);
       this.scene.start(SCENE_KEYS.DUNGEON_SELECT);
     });
+    overlay.add(surrenderBtn);
 
-    overlay.add([dim, panel, title]);
-    this.resultOverlay = overlay;
+    // Exit button
+    const exitBtn = this.createMenuButton(width / 2, height / 2 + 80, 'Exit to Lobby', () => {
+      overlay.destroy();
+      this.stopPolling();
+      this.scene.start(SCENE_KEYS.LOBBY);
+    });
+    overlay.add(exitBtn);
   }
 
-  private createActionButton(x: number, y: number, label: string, onClick: () => void): void {
-    const button = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 140, 45, COLORS.INFO, 0.9);
-    bg.setStrokeStyle(2, COLORS.LIGHT);
-    const text = this.add.text(0, 0, label, {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
+  private createMenuButton(x: number, y: number, label: string, onClick: () => void): Phaser.GameObjects.Container {
+    const btn = this.add.container(x, y);
+    const bg = this.add.rectangle(0, 0, 200, 35, COLORS.INFO, 0.8);
+    bg.setStrokeStyle(1, COLORS.LIGHT);
+    const text = this.add.text(0, 0, label, { fontSize: '14px', color: '#ffffff' });
     text.setOrigin(0.5);
-    button.add([bg, text]);
-    button.setSize(140, 45);
-    button.setInteractive({ useHandCursor: true });
-    button.on('pointerdown', onClick);
-  }
-
-  private showToast(message: string): void {
-    const width = this.cameras.main.width;
-    const toast = this.add.text(width / 2, 520, message, {
-      fontSize: '16px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { left: 10, right: 10, top: 6, bottom: 6 },
-    });
-    toast.setOrigin(0.5);
-    this.tweens.add({
-      targets: toast,
-      alpha: 0,
-      duration: 1200,
-      onComplete: () => toast.destroy(),
-    });
-  }
-
-  private createControlButton(x: number, y: number, text: string, callback: () => void): void {
-    const button = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 100, 40, COLORS.INFO, 0.8);
-    bg.setStrokeStyle(2, COLORS.LIGHT);
-    const btnText = this.add.text(0, 0, text, { fontSize: '16px', color: '#ffffff' });
-    btnText.setOrigin(0.5);
-    button.add([bg, btnText]);
-    button.setSize(100, 40);
-    button.setInteractive({ useHandCursor: true });
-    button.on('pointerdown', callback);
+    btn.add([bg, text]);
+    btn.setSize(200, 35);
+    btn.setInteractive({ useHandCursor: true });
+    btn.on('pointerdown', onClick);
+    return btn;
   }
 
   private createBackButton(): void {
     const button = this.add.container(50, 35);
     const bg = this.add.rectangle(0, 0, 100, 50, COLORS.DANGER);
     bg.setStrokeStyle(2, COLORS.LIGHT);
-    const text = this.add.text(0, 0, '⬅ Exit', { fontSize: '18px', color: '#ffffff' });
+    const text = this.add.text(0, 0, 'Exit', { fontSize: '18px', color: '#ffffff' });
     text.setOrigin(0.5);
     button.add([bg, text]);
     button.setSize(100, 50);
     button.setInteractive({ useHandCursor: true });
     button.on('pointerdown', () => this.scene.start(SCENE_KEYS.DUNGEON_SELECT));
+  }
+
+  shutdown(): void {
+    this.stopPolling();
+    this.animationLayer?.clearQueue();
   }
 }

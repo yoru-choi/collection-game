@@ -41,9 +41,7 @@
 - `PUT /api/v1/characters/:id/rune` - 룬 장착/변경
 
 **던전/전투**
-- `POST /api/v1/dungeons/:id/battle` - 전투 시작
-- `POST /api/v1/battle/:id/action` - 전투 액션
-- `POST /api/v1/battle/:id/result` - 전투 결과
+- 전투 상세는 [PRD/BATTLE.md](PRD/BATTLE.md) 참고
 
 **PvP**
 - `GET /api/v1/arena/ranking` - 랭킹 조회
@@ -163,5 +161,5 @@
 ---
 
 **문서 버전**: 1.0  
-**최종 수정일**: 2026-02-12  
+**최종 수정일**: 2026-02-13  
 **작성자**: Development Team

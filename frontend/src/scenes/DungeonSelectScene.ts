@@ -110,8 +110,12 @@ export class DungeonSelectScene extends Phaser.Scene {
     row.setInteractive({ useHandCursor: true });
     row.on('pointerdown', async () => {
       try {
-        const battle = await dungeonService.enterDungeon(dungeon.id);
-        this.scene.start(SCENE_KEYS.BATTLE, { dungeon, battle: battle || undefined });
+        const result = await dungeonService.enterDungeon(dungeon.id);
+        if (result && result.battleId) {
+          this.scene.start(SCENE_KEYS.BATTLE, { battleId: result.battleId, dungeon });
+        } else {
+          this.showToast('Failed to start battle');
+        }
       } catch (error) {
         this.showToast('Not enough energy or dungeon error');
         console.error('Enter dungeon error:', error);

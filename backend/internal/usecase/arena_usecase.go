@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 
 	"collection-game/internal/domain"
+	"collection-game/internal/engine"
 	"collection-game/internal/repository"
 )
 
@@ -150,20 +152,72 @@ func (uc *ArenaUseCase) GetBattleHistory(ctx context.Context, userID int64, limi
 	return uc.arenaRepo.GetBattleHistory(ctx, userID, currentSeason, limit)
 }
 
-// simulateBattle simulates a battle (simplified version)
+// simulateBattle runs an actual engine-based auto-battle between two teams.
 func (uc *ArenaUseCase) simulateBattle(attackerTeam []int64, defenderTeam []int64) bool {
-	// TODO: Implement actual battle simulation
-	// For now, use a simple random-based approach with slight advantage to attacker
-	// Real implementation should consider character stats, skills, etc.
+	ctx := context.Background()
 
-	attackerPower := len(attackerTeam) * 100
-	defenderPower := len(defenderTeam) * 95 // Slight disadvantage for defender
+	// Build ally units from attacker character IDs
+	allies := uc.buildBattleUnits(ctx, attackerTeam, "ally")
+	enemies := uc.buildBattleUnits(ctx, defenderTeam, "enemy")
 
-	// Simple probability calculation
-	winChance := float64(attackerPower) / float64(attackerPower+defenderPower)
+	if len(allies) == 0 || len(enemies) == 0 {
+		return len(allies) > len(enemies)
+	}
 
-	// For now, return true if win chance > 0.5 (deterministic for testing)
-	return winChance > 0.5
+	session := &domain.BattleSession{
+		CurrentWave:     0,
+		TotalWaves:      1,
+		Waves:           []domain.WaveConfig{},
+		Allies:          allies,
+		Enemies:         enemies,
+		SpeedMultiplier: 2.0,
+		AutoMode:        true,
+		Phase:           domain.PhaseInWave,
+	}
+
+	engine.RunFullAutoBattle(session, 500)
+
+	return !engine.AllAlliesDead(session)
+}
+
+func (a *ArenaUseCase) buildBattleUnits(ctx context.Context, charIDs []int64, team string) []*domain.BattleUnit {
+	units := make([]*domain.BattleUnit, 0, len(charIDs))
+	for i, id := range charIDs {
+		userChar, err := a.characterRepo.GetUserCharacterByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		char, err := a.characterRepo.GetByID(ctx, userChar.CharacterID)
+		if err != nil {
+			continue
+		}
+		unitID := fmt.Sprintf("%s_%d", team, i)
+		unit := &domain.BattleUnit{
+			UnitID:     unitID,
+			Team:       team,
+			CharID:     char.ID,
+			Name:       char.Name,
+			Grade:      char.Grade,
+			Element:    string(char.Element),
+			Class:      string(char.Class),
+			Level:      userChar.Level,
+			Position:   i,
+			HP:         userChar.CurrentHP,
+			MaxHP:      userChar.CurrentHP,
+			ATK:        userChar.CurrentATK,
+			DEF:        userChar.CurrentDEF,
+			SPD:        userChar.CurrentSPD,
+			CritRate:   userChar.CritRate,
+			CritDamage: userChar.CritDamage,
+			Accuracy:   userChar.Accuracy,
+			Resistance: userChar.Resistance,
+			ATBGauge:   0,
+			IsAlive:    true,
+			Skills:     generateDefaultEnemySkills(),
+		}
+		units = append(units, unit)
+	}
+	return units
 }
 
 // calculateRatingChange calculates ELO-style rating change

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"collection-game/internal/domain"
 	"collection-game/internal/repository"
@@ -16,7 +15,7 @@ type DungeonUseCase interface {
 	GetDungeonDetail(ctx context.Context, dungeonID int64) (*domain.Dungeon, error)
 	GetUserProgress(ctx context.Context, userID int64) ([]*domain.DungeonProgress, error)
 
-	EnterDungeon(ctx context.Context, userID int64, dungeonID int64) (*domain.BattleStart, error)
+	EnterDungeon(ctx context.Context, userID int64, dungeonID int64) (*domain.BattleStateResponse, error)
 	CompleteDungeon(ctx context.Context, userID int64, dungeonID int64, stars int, timeTaken int) error
 }
 
@@ -24,17 +23,20 @@ type dungeonUseCase struct {
 	dungeonRepo repository.DungeonRepository
 	userRepo    repository.UserRepository
 	charRepo    repository.CharacterRepository
+	battleUC    BattleUseCase
 }
 
 func NewDungeonUseCase(
 	dungeonRepo repository.DungeonRepository,
 	userRepo repository.UserRepository,
 	charRepo repository.CharacterRepository,
+	battleUC BattleUseCase,
 ) DungeonUseCase {
 	return &dungeonUseCase{
 		dungeonRepo: dungeonRepo,
 		userRepo:    userRepo,
 		charRepo:    charRepo,
+		battleUC:    battleUC,
 	}
 }
 
@@ -54,7 +56,7 @@ func (uc *dungeonUseCase) GetUserProgress(ctx context.Context, userID int64) ([]
 	return uc.dungeonRepo.GetAllUserProgress(ctx, userID)
 }
 
-func (uc *dungeonUseCase) EnterDungeon(ctx context.Context, userID int64, dungeonID int64) (*domain.BattleStart, error) {
+func (uc *dungeonUseCase) EnterDungeon(ctx context.Context, userID int64, dungeonID int64) (*domain.BattleStateResponse, error) {
 	// Get dungeon info
 	dungeon, err := uc.dungeonRepo.GetByID(ctx, dungeonID)
 	if err != nil {
@@ -83,17 +85,18 @@ func (uc *dungeonUseCase) EnterDungeon(ctx context.Context, userID int64, dungeo
 		return nil, err
 	}
 
-	enemyTeam, err := uc.buildEnemyTeam(ctx, dungeon)
+	waves, err := uc.buildWaves(ctx, dungeon)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domain.BattleStart{
-		ID:         time.Now().UnixNano(),
-		Status:     "ongoing",
-		PlayerTeam: playerTeam,
-		EnemyTeam:  enemyTeam,
-	}, nil
+	refID := dungeonID
+	resp, err := uc.battleUC.StartBattle(ctx, userID, "dungeon", &refID, playerTeam, waves)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start battle: %w", err)
+	}
+
+	return resp, nil
 }
 
 type dungeonStage struct {
@@ -142,51 +145,97 @@ func (uc *dungeonUseCase) buildPlayerTeam(ctx context.Context, userID int64) ([]
 	return team, nil
 }
 
-func (uc *dungeonUseCase) buildEnemyTeam(ctx context.Context, dungeon *domain.Dungeon) ([]domain.TeamMember, error) {
+func (uc *dungeonUseCase) buildWaves(ctx context.Context, dungeon *domain.Dungeon) ([]domain.WaveConfig, error) {
 	if dungeon == nil || dungeon.Stages == "" {
-		return []domain.TeamMember{}, nil
+		return []domain.WaveConfig{}, nil
 	}
 
 	var stages []dungeonStage
 	if err := json.Unmarshal([]byte(dungeon.Stages), &stages); err != nil {
-		return []domain.TeamMember{}, nil
+		return []domain.WaveConfig{}, nil
 	}
 	if len(stages) == 0 {
-		return []domain.TeamMember{}, nil
+		return []domain.WaveConfig{}, nil
 	}
 
-	team := make([]domain.TeamMember, 0, len(stages[0].Enemies))
-	for idx, enemy := range stages[0].Enemies {
-		char, err := uc.charRepo.GetByID(ctx, enemy.CharacterID)
-		if err != nil {
-			return nil, err
+	waves := make([]domain.WaveConfig, 0, len(stages))
+	for waveIdx, stage := range stages {
+		wave := domain.WaveConfig{
+			Wave:    waveIdx,
+			Enemies: make([]domain.BattleUnit, 0, len(stage.Enemies)),
 		}
+		for enemyIdx, enemy := range stage.Enemies {
+			char, err := uc.charRepo.GetByID(ctx, enemy.CharacterID)
+			if err != nil {
+				return nil, err
+			}
 
-		level := enemy.Level
-		if level <= 0 {
-			level = 1
+			level := enemy.Level
+			if level <= 0 {
+				level = 1
+			}
+
+			stats := calculateScaledStats(char, level)
+			unitID := fmt.Sprintf("enemy_%d_w%d", enemyIdx, waveIdx)
+
+			wave.Enemies = append(wave.Enemies, domain.BattleUnit{
+				UnitID:     unitID,
+				Team:       "enemy",
+				CharID:     char.ID,
+				Name:       char.Name,
+				Grade:      char.Grade,
+				Element:    string(char.Element),
+				Class:      string(char.Class),
+				ImageURL:   char.ImageURL,
+				Level:      level,
+				Position:   enemyIdx,
+				HP:         stats.HP,
+				MaxHP:      stats.HP,
+				ATK:        stats.ATK,
+				DEF:        stats.DEF,
+				SPD:        stats.SPD,
+				CritRate:   15.0,
+				CritDamage: 50.0,
+				Accuracy:   85.0,
+				Resistance: 15.0,
+				ATBGauge:   0,
+				IsAlive:    true,
+				Skills:     generateDefaultEnemySkills(),
+			})
 		}
-
-		stats := calculateScaledStats(char, level)
-		team = append(team, domain.TeamMember{
-			UserCharacterID: 0,
-			CharacterID:     char.ID,
-			Name:            char.Name,
-			Grade:           char.Grade,
-			Element:         string(char.Element),
-			Class:           string(char.Class),
-			ImageURL:        char.ImageURL,
-			Level:           level,
-			Position:        idx,
-			CurrentHP:       stats.HP,
-			MaxHP:           stats.HP,
-			Atk:             stats.ATK,
-			Def:             stats.DEF,
-			Spd:             stats.SPD,
-		})
+		waves = append(waves, wave)
 	}
 
-	return team, nil
+	return waves, nil
+}
+
+func generateDefaultEnemySkills() []domain.BattleSkill {
+	return []domain.BattleSkill{
+		{
+			SkillID: 0, SlotIndex: 0,
+			Name: "Attack", SkillType: domain.SkillTypeDamage,
+			TargetType: domain.TargetSingleEnemy, Multiplier: 1.0,
+			MaxCooldown: 0, CurrentCD: 0,
+		},
+		{
+			SkillID: 0, SlotIndex: 1,
+			Name: "Strong Attack", SkillType: domain.SkillTypeDamage,
+			TargetType: domain.TargetSingleEnemy, Multiplier: 1.5,
+			MaxCooldown: 2, CurrentCD: 0,
+		},
+		{
+			SkillID: 0, SlotIndex: 2,
+			Name: "Heavy Strike", SkillType: domain.SkillTypeDamage,
+			TargetType: domain.TargetSingleEnemy, Multiplier: 2.5,
+			MaxCooldown: 3, CurrentCD: 0,
+		},
+		{
+			SkillID: 0, SlotIndex: 3,
+			Name: "Special", SkillType: domain.SkillTypeDamage,
+			TargetType: domain.TargetAllEnemies, Multiplier: 3.0,
+			MaxCooldown: 5, CurrentCD: 0,
+		},
+	}
 }
 
 type scaledStats struct {
@@ -225,6 +274,10 @@ func mapDetailToTeamMember(detail *domain.CharacterDetail, position int) domain.
 		Atk:             detail.CurrentATK,
 		Def:             detail.CurrentDEF,
 		Spd:             detail.CurrentSPD,
+		CritRate:        detail.CritRate,
+		CritDamage:      detail.CritDamage,
+		Accuracy:        detail.Accuracy,
+		Resistance:      detail.Resistance,
 	}
 }
 

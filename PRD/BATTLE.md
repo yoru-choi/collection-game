@@ -144,6 +144,37 @@ ATB 증가량 (per tick) = SPD / 100
 - 속성 보너스: 동일 속성 3개 이상 시 스탯 증가
 - 클래스 보너스: 클래스 조합에 따른 추가 효과
 
+### 2.5 전투 상태 전이 (MVP)
+전투 진행을 상태로 분리해 클라이언트/서버 동작을 명확히 한다.
+
+**상태 목록**
+- **Ready**: 전투 로딩, 파티/웨이브 데이터 세팅
+- **InWave**: ATB 증가 및 행동 처리
+- **ActionSelect**: 수동 모드에서 아군 행동 대기
+- **Animating**: 스킬/피격 애니메이션 재생
+- **WaveClear**: 웨이브 종료 연출
+- **BattleEnd**: 승패 확정
+
+**전이 규칙**
+1. Ready → InWave
+2. InWave → ActionSelect (수동 모드에서 아군 턴 도래 시)
+3. ActionSelect → Animating (스킬/대상 선택 완료)
+4. Animating → InWave (피해/상태 적용 후)
+5. InWave → WaveClear (현재 웨이브 적 전멸)
+6. WaveClear → InWave (다음 웨이브 존재)
+7. WaveClear → BattleEnd (최종 웨이브 클리어)
+
+### 2.6 전투 중단/포기 규칙
+- **일시정지**: 메뉴에서 일시정지 가능, ATB 증가 정지
+- **포기**: 포기 시 즉시 BattleEnd(패배) 처리
+- **연결 끊김**: 클라이언트 재접속 시 마지막 전투 상태 복구 (MVP는 재입장 금지 가능)
+
+### 2.7 보상/결과 반영 흐름
+- BattleEnd에서 승패 확정
+- 승리 시 보상 계산 → Result 화면 → RewardClaim 확정
+- 패배 시 보상 없음, 재도전/로비 복귀 선택
+- 보상 확정은 서버 트랜잭션으로 처리
+
 ---
 
 ## 3. 전투 UI/UX

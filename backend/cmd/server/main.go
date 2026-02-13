@@ -84,6 +84,8 @@ func main() {
 	questRepo := repository.NewQuestRepository(db.DB)
 	guildRepo := repository.NewGuildRepository(db.DB)
 	shopRepo := repository.NewShopRepository(db.DB)
+	skillRepo := repository.NewSkillRepository(db.DB)
+	battleRepo := repository.NewBattleRepository(db.DB)
 	logger.Info("Repositories initialized", nil)
 
 	// Initialize use cases
@@ -91,7 +93,8 @@ func main() {
 	userUC := usecase.NewUserUseCase(userRepo)
 	charUC := usecase.NewCharacterUseCase(charRepo, userRepo)
 	summonUC := usecase.NewSummonUseCase(userRepo, charRepo, summonRepo)
-	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo, charRepo)
+	battleUC := usecase.NewBattleUseCase(battleRepo, skillRepo)
+	dungeonUC := usecase.NewDungeonUseCase(dungeonRepo, userRepo, charRepo, battleUC)
 	arenaUC := usecase.NewArenaUseCase(arenaRepo, userRepo, charRepo)
 	questUC := usecase.NewQuestUseCase(questRepo, userRepo, charRepo)
 	guildUC := usecase.NewGuildUseCase(guildRepo, userRepo)
@@ -113,6 +116,7 @@ func main() {
 	questHandler := handler.NewQuestHandler(questUC)
 	guildHandler := handler.NewGuildHandler(guildUC)
 	shopHandler := handler.NewShopHandler(shopUC)
+	battleHandler := handler.NewBattleHandler(battleUC)
 	wsHandler := handler.NewWebSocketHandler(wsHub)
 	docsHandler := handler.NewDocsHandler()
 	logger.Info("Handlers initialized", nil)
@@ -130,6 +134,7 @@ func main() {
 		questHandler,
 		guildHandler,
 		shopHandler,
+		battleHandler,
 		wsHandler,
 		docsHandler,
 	)

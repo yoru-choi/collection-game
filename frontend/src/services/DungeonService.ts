@@ -15,6 +15,21 @@ type DungeonApi = {
   gold_reward: number;
 };
 
+// New ATB battle state response from server
+type BattleStateApi = {
+  battle_id: number;
+  phase: string;
+  current_wave: number;
+  total_waves: number;
+  allies: any[];
+  enemies: any[];
+  active_unit_id?: string;
+  auto_mode: boolean;
+  speed_multiplier: number;
+  turn_counter: number;
+  events?: any[];
+};
+
 type BattleTeamMemberApi = {
   user_character_id?: number;
   character_id: number;
@@ -39,6 +54,11 @@ type BattleStartApi = {
   enemy_team: BattleTeamMemberApi[];
 };
 
+export interface EnterDungeonResult {
+  battleId: number;
+  dungeon: Dungeon;
+}
+
 export class DungeonService {
   async getDungeons(chapter?: number): Promise<Dungeon[]> {
     try {
@@ -52,12 +72,21 @@ export class DungeonService {
     }
   }
 
-  async enterDungeon(dungeonId: string): Promise<BattleStart | null> {
+  async enterDungeon(dungeonId: string): Promise<{ battleId: number } | null> {
     try {
-      const response = await httpClient.post<ApiResponse<BattleStartApi>>(
+      // The new API returns BattleStateResponse with battle_id
+      const response = await httpClient.post<ApiResponse<BattleStateApi>>(
         `/dungeons/${dungeonId}/enter`
       );
-      return response.data ? this.mapBattleStart(response.data) : null;
+      if (response.data && response.data.battle_id) {
+        return { battleId: response.data.battle_id };
+      }
+      // Fallback: try old format
+      const oldResponse = response as any;
+      if (oldResponse.data?.id) {
+        return { battleId: oldResponse.data.id };
+      }
+      return null;
     } catch (error) {
       console.error('Enter dungeon error:', error);
       throw error;

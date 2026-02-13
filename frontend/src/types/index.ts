@@ -98,7 +98,7 @@ export interface RuneStat {
   isPercent: boolean;
 }
 
-// Battle Types
+// Battle Types (legacy)
 export interface BattleState {
   id: string;
   playerTeam: BattleCharacter[];
@@ -166,6 +166,109 @@ export interface BattleResult {
   rewards: Reward[];
   exp: number;
   gold: number;
+}
+
+// ============================================================
+// ATB Battle System Types
+// ============================================================
+
+export type BattlePhase = 'ready' | 'in_wave' | 'action_select' | 'animating' | 'wave_clear' | 'battle_end';
+
+export interface BattleStateResponse {
+  battleId: number;
+  phase: BattlePhase;
+  currentWave: number;
+  totalWaves: number;
+  allies: BattleUnitState[];
+  enemies: BattleUnitState[];
+  activeUnitId?: string;
+  autoMode: boolean;
+  speedMultiplier: number;
+  turnCounter: number;
+  events?: TurnEventDisplay[];
+}
+
+export interface BattleUnitState {
+  unitId: string;
+  team: 'ally' | 'enemy';
+  charId: number;
+  name: string;
+  grade: number;
+  element: string;
+  class: string;
+  imageUrl: string;
+  level: number;
+  position: number;
+  hp: number;
+  maxHp: number;
+  atk: number;
+  def: number;
+  spd: number;
+  critRate: number;
+  critDamage: number;
+  accuracy: number;
+  resistance: number;
+  atbGauge: number;
+  skills: BattleSkillState[];
+  buffs: ActiveEffectDisplay[];
+  debuffs: ActiveEffectDisplay[];
+  isAlive: boolean;
+}
+
+export interface BattleSkillState {
+  skillId: number;
+  slotIndex: number;
+  name: string;
+  skillType: string;
+  targetType: string;
+  multiplier: number;
+  maxCooldown: number;
+  currentCd: number;
+  effects: string;
+}
+
+export interface ActiveEffectDisplay {
+  effectType: string;
+  value: number;
+  duration: number;
+  sourceId: string;
+}
+
+export interface TurnEventDisplay {
+  turnNumber: number;
+  actorId: string;
+  actorName: string;
+  skillName: string;
+  skillId: number;
+  targets: TargetResultDisplay[];
+  eventType: string;
+}
+
+export interface TargetResultDisplay {
+  targetId: string;
+  targetName: string;
+  damage?: number;
+  heal?: number;
+  isCrit?: boolean;
+  isKill?: boolean;
+  hpAfter: number;
+  applied?: string[];
+  resisted?: string[];
+}
+
+export interface BattleActionInput {
+  unitId: string;
+  skillIndex: number;
+  targetIds: string[];
+}
+
+export interface BattleResultResponse {
+  battleId: number;
+  result: 'victory' | 'defeat';
+  wavesCleared: number;
+  gold: number;
+  exp: number;
+  crystals: number;
 }
 
 // Dungeon Types

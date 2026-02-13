@@ -23,14 +23,14 @@ func NewDungeonHandler(dungeonUC usecase.DungeonUseCase) *DungeonHandler {
 // GET /api/v1/dungeons
 func (h *DungeonHandler) GetDungeons(w http.ResponseWriter, r *http.Request) {
 	chapterStr := r.URL.Query().Get("chapter")
-	
+
 	if chapterStr != "" {
 		chapter, err := strconv.Atoi(chapterStr)
 		if err != nil {
 			utils.BadRequest(w, "invalid chapter number")
 			return
 		}
-		
+
 		dungeons, err := h.dungeonUC.GetDungeonsByChapter(r.Context(), chapter)
 		if err != nil {
 			utils.InternalServerError(w, err.Error())
@@ -96,13 +96,13 @@ func (h *DungeonHandler) EnterDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	battle, err := h.dungeonUC.EnterDungeon(r.Context(), userID, dungeonID)
+	battleState, err := h.dungeonUC.EnterDungeon(r.Context(), userID, dungeonID)
 	if err != nil {
 		utils.BadRequest(w, err.Error())
 		return
 	}
 
-	utils.Success(w, battle)
+	utils.Success(w, battleState)
 }
 
 type CompleteDungeonRequest struct {
