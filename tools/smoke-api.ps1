@@ -10,7 +10,9 @@ param(
   [bool]$CheckWs = $true,
   [int]$ThrottleMs = 150,
   [int]$MaxRetries = 2,
-  [int]$RetryDelayMs = 700
+  [int]$RetryDelayMs = 700,
+  [bool]$CheckRouterSync = $true,
+  [string]$RouterFilePath = "backend/internal/handler/router.go"
 )
 
 $ErrorActionPreference = "Stop"
@@ -198,6 +200,31 @@ function Get-WsUrl {
   return $wsBase.TrimEnd("/") + "/ws"
 }
 
+function Test-RouterSync {
+  param(
+    [string]$ScriptPath,
+    [string]$RouterPath
+  )
+
+  if (-not (Test-Path -Path $RouterPath)) {
+    Add-Result -Name "RouterSync" -Method "META" -Path $RouterPath -Ok $true -Status 204 -Error "skipped: router file not found" | Out-Null
+    return
+  }
+
+  try {
+    $scriptItem = Get-Item -Path $ScriptPath
+    $routerItem = Get-Item -Path $RouterPath
+    if ($routerItem.LastWriteTime -gt $scriptItem.LastWriteTime) {
+      Add-Result -Name "RouterSync" -Method "META" -Path $RouterPath -Ok $true -Status 299 -Error "warning: router changed after smoke script; review endpoint coverage" | Out-Null
+      Write-Host "Router changed after smoke script. Endpoint coverage review recommended." -ForegroundColor Yellow
+    } else {
+      Add-Result -Name "RouterSync" -Method "META" -Path $RouterPath -Ok $true -Status 200 -Error $null | Out-Null
+    }
+  } catch {
+    Add-Result -Name "RouterSync" -Method "META" -Path $RouterPath -Ok $true -Status 204 -Error "skipped: unable to compare timestamps" | Out-Null
+  }
+}
+
 function Receive-WebSocketText {
   param(
     [System.Net.WebSockets.ClientWebSocket]$Socket,
@@ -311,6 +338,10 @@ function Invoke-WebSocketTests {
 
 Write-Host "Base URL: $BaseUrl"
 Write-Host "Timeout: $TimeoutSec sec"
+
+if ($CheckRouterSync) {
+  Test-RouterSync -ScriptPath $PSCommandPath -RouterPath $RouterFilePath
+}
 
 $health = Invoke-Api -Name "Health" -Method "GET" -Path "/health"
 $skipRemaining = $false
@@ -614,8 +645,16 @@ if (-not $skipRemaining) {
 }
 
 $failed = $results | Where-Object { -not $_.Ok }
+$skipped = $results | Where-Object { $_.Error -and $_.Error -like "skipped:*" }
+$warnings = $results | Where-Object { $_.Error -and $_.Error -like "warning:*" }
 Write-Host "";
-Write-Host "Smoke test completed. Total: $($results.Count), Failed: $($failed.Count)"
+Write-Host "Smoke test completed. Total: $($results.Count), Failed: $($failed.Count), Skipped: $($skipped.Count), Warnings: $($warnings.Count)"
 if ($failed.Count -gt 0) {
   $failed | Select-Object Name, Method, Path, Status, Error | Format-Table -AutoSize -Wrap
+}
+
+if ($warnings.Count -gt 0) {
+  Write-Host "";
+  Write-Host "Warnings:" -ForegroundColor Yellow
+  $warnings | Select-Object Name, Method, Path, Status, Error | Format-Table -AutoSize -Wrap
 }

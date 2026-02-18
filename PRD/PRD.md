@@ -7,7 +7,7 @@
 
 ### 1.2 기술 스택
 - **프론트엔드**: Phaser 3 (2D game engine) + TypeScript + Vite
-- **백엔드**: Go (Golang)
+- **백엔드**: TypeScript + Node.js (NestJS) + Drizzle ORM
 - **데이터베이스**: PostgreSQL
 - **세션 & 캐시 스토어**: Valkey (Redis 호환)
   - JWT Refresh Token 저장 (TTL 7일)
@@ -50,7 +50,7 @@
                      │ WebSocket Proxy
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              Go Backend Server (Port 8080)                   │
+│       NestJS API Server (Node.js, Port 8080)                │
 │         - REST API (/api/v1/*)                               │
 │         - WebSocket Server (/ws)                             │
 │         - JWT Authentication                                 │
@@ -75,9 +75,9 @@
 
 **통신 흐름:**
 1. **Web Client** → Nginx (HTTP/WebSocket 요청)
-2. **Nginx** → Go Backend (프록시, Rate Limiting 적용)
-3. **Go Backend** → PostgreSQL (게임 데이터 CRUD)
-4. **Go Backend** → Valkey (캐싱, 세션 관리)
+2. **Nginx** → NestJS Backend (프록시, Rate Limiting 적용)
+3. **NestJS Backend** → PostgreSQL (게임 데이터 CRUD)
+4. **NestJS Backend** → Valkey (캐싱, 세션 관리)
 5. **Dozzle** → Docker Logs (실시간 로그 수집 및 표시)
 
 **네트워크 분리:**
@@ -310,7 +310,17 @@
 
 ## 4. 기술 요구사항
 
-### 4.1 백엔드 (Go)
+### 4.1 백엔드 (TypeScript + Node.js + NestJS + Drizzle ORM)
+
+#### 4.1.0 백엔드 구현 기준
+- **프레임워크**: NestJS (Controller/Module/Provider 기반)
+- **ORM**: Drizzle ORM + SQL 마이그레이션(`migrations/`)
+- **의존성 주입**: NestJS DI 컨테이너를 통한 UseCase/Repository 조합
+- **검증/보안 기본값**:
+  - DTO + Validation Pipe로 요청 스키마 검증
+  - Guard 기반 인증/인가 (JWT)
+  - Interceptor 기반 응답 포맷 통일 및 로깅 확장
+- **모듈 경계**: 인증, 유저, 캐릭터, 전투, 던전, 상점, 퀘스트를 기능 모듈로 분리
 
 #### 4.1.1 API 디자인 원칙
 - RESTful API 설계
@@ -343,7 +353,7 @@
 - **일일 퀘스트**: user_id, quest_id, progress, completed_at
 
 #### 4.1.3 OpenAPI/WS 문서화 및 테스트
-- **OpenAPI 3.0**: Go REST API는 OpenAPI 3.0 스펙으로 문서화
+- **OpenAPI 3.0**: NestJS Swagger 기반으로 OpenAPI 3.0 스펙 문서화
 - **문서 제공**: `/openapi.json` 및 `/docs` (Swagger UI 또는 Redoc)
 - **계약 테스트**: 스펙 기반 요청/응답 검증 테스트 추가
 - **WebSocket 문서화**: WS 이벤트/페이로드는 OpenAPI 확장 또는 AsyncAPI 스펙으로 별도 명세
@@ -474,34 +484,34 @@
 
 #### 4.1.6 아키텍처
 
-**레이어 구조 (Clean Architecture)**
+**레이어 구조 (NestJS + Clean Architecture)**
 ```
 ┌──────────────────────────────────────────────────┐
-│           Handler Layer                          │
-│  - HTTP Handlers (/api/v1/*)                     │
-│  - WebSocket Handler (/ws)                       │
-│  - Middleware (Auth, Rate Limit, CORS)           │
+│      Interface Layer (Controller/Gateway)        │
+│  - HTTP Controller (/api/v1/*)                   │
+│  - WebSocket Gateway (/ws)                       │
+│  - Guard/Pipe/Interceptor/Middleware             │
 └────────────────┬─────────────────────────────────┘
                  │
 ┌────────────────▼─────────────────────────────────┐
-│           UseCase Layer                          │
-│  - Business Logic                                │
-│  - Game Rules Validation                         │
+│        Application Layer (UseCase/Service)       │
+│  - Business Rules                                │
 │  - Orchestration                                 │
+│  - Transaction Boundary                          │
 └────────────────┬─────────────────────────────────┘
                  │
 ┌────────────────▼─────────────────────────────────┐
-│         Repository Layer                         │
-│  - Database Access (PostgreSQL)                  │
-│  - Cache Access (Valkey)                         │
-│  - External Services                             │
+│    Infrastructure Layer (Repository/Adapter)     │
+│  - Drizzle Repository (PostgreSQL)               │
+│  - Valkey Adapter (Cache/Session)                │
+│  - External Integration                           │
 └────────────────┬─────────────────────────────────┘
                  │
 ┌────────────────▼─────────────────────────────────┐
-│           Domain Layer                           │
+│          Domain Layer (Entity/Policy)            │
 │  - Entities (User, Character, etc.)              │
 │  - Value Objects                                 │
-│  - Domain Interfaces                             │
+│  - Domain Policy                                 │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -519,18 +529,27 @@
   - API Rate Limiting 카운터
 
 **데이터 흐름:**
-1. Client → Nginx → Handler (인증 검증)
-2. Handler → UseCase (비즈니스 로직)
-3. UseCase → Repository (DB/Cache 접근)
-4. Repository → PostgreSQL/Valkey
+1. Client → Nginx → Controller/Guard (인증 검증)
+2. Controller → UseCase(Service) (비즈니스 로직)
+3. UseCase → Repository(Adapter) (DB/Cache 접근)
+4. Repository/Adapter → PostgreSQL/Valkey
 5. 응답 역순으로 반환
 
 #### 4.1.7 주요 패키지 구조
 ```
-/cmd
-  /server
-    main.go
-/internal
+/src
+  main.ts
+  /modules
+    /auth
+    /user
+    /character
+    /battle
+    /dungeon
+    /shop
+    /quest
+      *.module.ts
+      *.controller.ts
+      *.service.ts
   /domain
     /character
     /user
@@ -538,14 +557,15 @@
     /dungeon
   /usecase
   /repository
-  /handler
   /middleware
-/pkg
   /auth
-  /database
+  /db
+    /schema
+    /migrations
+    /repositories
   /cache
   /utils
-/config
+  /config
 /migrations
 ```
 
