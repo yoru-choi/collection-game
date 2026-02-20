@@ -39,6 +39,10 @@ export const characters = pgTable('characters', {
   baseAtk: integer('base_atk').notNull(),
   baseDef: integer('base_def').notNull(),
   baseSpd: integer('base_spd').notNull(),
+  baseCrt: integer('base_crt').notNull().default(15),
+  baseCrtDmg: integer('base_crt_dmg').notNull().default(50),
+  baseAcc: integer('base_acc').notNull().default(0),
+  baseRes: integer('base_res').notNull().default(0),
   skill1Id: bigint('skill_1_id', { mode: 'number' }),
   skill2Id: bigint('skill_2_id', { mode: 'number' }),
   skill3Id: bigint('skill_3_id', { mode: 'number' }),
@@ -64,7 +68,7 @@ export const userCharacters = pgTable('user_characters', {
   skill2Level: integer('skill_2_level').notNull().default(1),
   skill3Level: integer('skill_3_level').notNull().default(1),
   skill4Level: integer('skill_4_level').notNull().default(1),
-  awakened: boolean('awakened').notNull().default(false),
+  awakened: integer('awakened').notNull().default(0),
   obtainedAt: timestamp('obtained_at', { mode: 'string' }).notNull(),
 });
 
@@ -157,4 +161,50 @@ export const userQuests = pgTable('user_quests', {
   startedAt: timestamp('started_at', { mode: 'string' }).notNull(),
   completedAt: timestamp('completed_at', { mode: 'string' }),
   claimedAt: timestamp('claimed_at', { mode: 'string' }),
+});
+
+// ── New tables from migration 000013 & 000014 ─────────────────────────────────
+
+export const userDungeonProgress = pgTable('user_dungeon_progress', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: bigint('user_id', { mode: 'number' }).notNull(),
+  dungeonId: bigint('dungeon_id', { mode: 'number' }).notNull(),
+  clearedAt: timestamp('cleared_at', { mode: 'string' }).notNull(),
+}, (table) => ({
+  userDungeonUnique: unique().on(table.userId, table.dungeonId),
+}));
+
+export const userItems = pgTable('user_items', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: bigint('user_id', { mode: 'number' }).notNull(),
+  itemType: varchar('item_type', { length: 50 }).notNull(),
+  itemId: bigint('item_id', { mode: 'number' }).notNull().default(0),
+  itemName: varchar('item_name', { length: 100 }).notNull().default(''),
+  quantity: integer('quantity').notNull().default(0),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
+}, (table) => ({
+  userItemUnique: unique().on(table.userId, table.itemType, table.itemId),
+}));
+
+export const weeklyQuests = pgTable('weekly_quests', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 2048 }),
+  conditionType: varchar('condition_type', { length: 50 }).notNull(),
+  conditionTarget: integer('condition_target').notNull().default(1),
+  rewards: jsonb('rewards').notNull(),
+  orderIndex: integer('order_index').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+});
+
+export const achievements = pgTable('achievements', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 2048 }),
+  conditionType: varchar('condition_type', { length: 50 }).notNull(),
+  conditionTarget: integer('condition_target').notNull().default(1),
+  rewards: jsonb('rewards').notNull(),
+  orderIndex: integer('order_index').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
 });

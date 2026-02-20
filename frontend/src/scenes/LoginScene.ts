@@ -56,17 +56,17 @@ export class LoginScene extends Phaser.Scene {
 
     // Title
     const titleGlow = this.add.graphics();
-    titleGlow.fillStyle(COLORS.PRIMARY_LIGHT, 0.25);
-    titleGlow.fillCircle(width / 2, 120, 110);
+    titleGlow.fillStyle(COLORS.PRIMARY_LIGHT, 0.2);
+    titleGlow.fillCircle(width / 2, 52, 80);
 
-    const title = this.add.text(width / 2, 120, 'Collection RPG', {
+    const title = this.add.text(width / 2, 52, 'Collection RPG', {
       fontFamily: UI.FONTS.TITLE,
-      fontSize: '56px',
+      fontSize: '42px',
       color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
       shadow: {
-        offsetX: 3,
-        offsetY: 3,
+        offsetX: 2,
+        offsetY: 2,
         color: this.colorToCss(COLORS.PRIMARY_DARK),
         blur: 8,
         stroke: true,
@@ -77,21 +77,14 @@ export class LoginScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: title,
-      y: 115,
-      scaleX: 1.05,
-      scaleY: 1.05,
+      y: 48,
+      scaleX: 1.03,
+      scaleY: 1.03,
       duration: 2000,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
     });
-
-    const subtitle = this.add.text(width / 2, 180, 'Epic Character Collection Adventure', {
-      fontFamily: UI.FONTS.BODY,
-      fontSize: '18px',
-      color: this.colorToCss(COLORS.TEXT_SECONDARY),
-    });
-    subtitle.setOrigin(0.5);
 
     this.createLoginPanel();
     addSceneFrame(this);
@@ -103,147 +96,106 @@ export class LoginScene extends Phaser.Scene {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    const panelWidth = 450;
-    const panelHeight = this.isLoginMode ? 550 : 640;
-    const panelX = width / 2;
-    const panelY = height / 2 + 80;
+    // ── Layout constants ────────────────────────────────────────
+    // Game is 1280×720. Title is at y=52.
+    // Login panel:   pTop≈150, pBottom≈640  (490px)
+    // Register panel: pTop≈95,  pBottom≈695  (600px)
+    const panelWidth  = 460;
+    const panelHeight = this.isLoginMode ? 490 : 600;
+    const panelX  = width / 2;
+    const panelY  = height / 2 + 35; // 395
 
+    const pTop    = panelY - panelHeight / 2; // top edge of panel
+    const pBottom = panelY + panelHeight / 2; // bottom edge of panel
+
+    // Shadow
     const shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.5);
-    shadow.fillRoundedRect(
-      panelX - panelWidth / 2 + 6,
-      panelY - panelHeight / 2 + 6,
-      panelWidth,
-      panelHeight,
-      20
-    );
+    shadow.fillRoundedRect(panelX - panelWidth / 2 + 6, pTop + 6, panelWidth, panelHeight, 20);
 
+    // Panel body
     const panel = this.add.graphics();
     panel.fillStyle(COLORS.DARKER, 0.95);
-    panel.fillRoundedRect(
-      panelX - panelWidth / 2,
-      panelY - panelHeight / 2,
-      panelWidth,
-      panelHeight,
-      20
-    );
+    panel.fillRoundedRect(panelX - panelWidth / 2, pTop, panelWidth, panelHeight, 20);
     panel.lineStyle(3, COLORS.GOLD, 0.8);
-    panel.strokeRoundedRect(
-      panelX - panelWidth / 2,
-      panelY - panelHeight / 2,
-      panelWidth,
-      panelHeight,
-      20
-    );
+    panel.strokeRoundedRect(panelX - panelWidth / 2, pTop, panelWidth, panelHeight, 20);
 
+    // Header background strip
     panel.fillStyle(COLORS.BG_ACCENT, 0.6);
-    panel.fillRoundedRect(
-      panelX - panelWidth / 2 + 12,
-      panelY - panelHeight / 2 + 12,
-      panelWidth - 24,
-      60,
-      14
-    );
+    panel.fillRoundedRect(panelX - panelWidth / 2 + 12, pTop + 12, panelWidth - 24, 58, 14);
 
-    const modeText = this.add.text(
-      panelX,
-      panelY - panelHeight / 2 + 46,
-      this.isLoginMode ? 'Login' : 'Register',
-      {
-        fontFamily: UI.FONTS.TITLE,
-        fontSize: '36px',
-        color: this.colorToCss(COLORS.GOLD),
-        fontStyle: 'bold',
-        shadow: {
-          offsetX: 2,
-          offsetY: 2,
-          color: '#000000',
-          blur: 4,
-          fill: true,
-        },
-      }
-    );
+    // ── Header ─────────────────────────────────────────────────
+    const modeText = this.add.text(panelX, pTop + 44, this.isLoginMode ? 'Login' : 'Register', {
+      fontFamily: UI.FONTS.TITLE,
+      fontSize: '32px',
+      color: this.colorToCss(COLORS.GOLD),
+      fontStyle: 'bold',
+      shadow: { offsetX: 2, offsetY: 2, color: '#000000', blur: 4, fill: true },
+    });
     modeText.setOrigin(0.5);
 
     const underline = this.add.graphics();
-    underline.lineStyle(4, COLORS.PRIMARY_LIGHT);
-    underline.lineBetween(
-      panelX - 90,
-      panelY - panelHeight / 2 + 70,
-      panelX + 90,
-      panelY - panelHeight / 2 + 70
-    );
+    underline.lineStyle(3, COLORS.PRIMARY_LIGHT);
+    underline.lineBetween(panelX - 80, pTop + 68, panelX + 80, pTop + 68);
 
-    const inputYStart = panelY - panelHeight / 2 + 120;
+    // ── Input fields ────────────────────────────────────────────
+    const inputYStart = pTop + 122; // first field center Y — 22 px below underline (pTop+68)
+    const inputGap   = 82;          // spacing between field centers
 
-    this.createInputField(panelX, inputYStart, '👤 Username', 'username');
+    this.createInputField(panelX, inputYStart,             '👤 Username',         'username');
 
     if (!this.isLoginMode) {
-      this.createInputField(panelX, inputYStart + 90, '📧 Email', 'email');
-      this.createInputField(panelX, inputYStart + 180, '🔒 Password', 'password');
-      this.createInputField(panelX, inputYStart + 270, '🔒 Confirm Password', 'confirmPassword');
+      this.createInputField(panelX, inputYStart + inputGap,     '📧 Email',            'email');
+      this.createInputField(panelX, inputYStart + inputGap * 2, '🔒 Password',         'password');
+      this.createInputField(panelX, inputYStart + inputGap * 3, '🔒 Confirm Password', 'confirmPassword');
     } else {
-      this.createInputField(panelX, inputYStart + 90, '🔒 Password', 'password');
+      this.createInputField(panelX, inputYStart + inputGap,     '🔒 Password',         'password');
     }
 
+    // ── Buttons ────────────────────────────────────────────────
+    // Main action button
     this.createButton(
       panelX,
-      panelY + panelHeight / 2 - 130,
+      pBottom - 118,
       this.isLoginMode ? '🎮 Login' : '✨ Register',
       () => this.handleSubmit(),
-      COLORS.PRIMARY
+      COLORS.PRIMARY,
     );
 
+    // Toggle login/register
     const toggleText = this.isLoginMode
       ? "Don't have an account? Register"
       : 'Already have an account? Login';
 
-    const toggleButton = this.add.text(panelX, panelY + panelHeight / 2 - 70, toggleText, {
+    const toggleButton = this.add.text(panelX, pBottom - 70, toggleText, {
       fontFamily: UI.FONTS.BODY,
-      fontSize: '16px',
+      fontSize: '15px',
       color: this.colorToCss(COLORS.TEXT_SECONDARY),
-      shadow: {
-        offsetX: 1,
-        offsetY: 1,
-        color: '#000000',
-        blur: 2,
-        fill: true,
-      },
+      shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 2, fill: true },
     });
     toggleButton.setOrigin(0.5);
     toggleButton.setInteractive({ useHandCursor: true });
 
     toggleButton.on('pointerover', () => {
       toggleButton.setColor('#ffffff');
-      this.tweens.add({
-        targets: toggleButton,
-        scaleX: 1.05,
-        scaleY: 1.05,
-        duration: 150,
-      });
+      this.tweens.add({ targets: toggleButton, scaleX: 1.05, scaleY: 1.05, duration: 150 });
     });
-
     toggleButton.on('pointerout', () => {
       toggleButton.setColor(this.colorToCss(COLORS.TEXT_SECONDARY));
-      this.tweens.add({
-        targets: toggleButton,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 150,
-      });
+      this.tweens.add({ targets: toggleButton, scaleX: 1, scaleY: 1, duration: 150 });
     });
-
     toggleButton.on('pointerdown', () => {
       this.isLoginMode = !this.isLoginMode;
       this.scene.restart();
     });
 
+    // Guest / dev login (inside panel, at the very bottom)
     this.createButton(
       panelX,
-      panelY + panelHeight / 2 + 10,
+      pBottom - 32,
       '🎭 Guest Login (Dev)',
       () => this.handleGuestLogin(),
-      COLORS.SUCCESS
+      COLORS.SUCCESS,
     );
   }
 
@@ -428,7 +380,7 @@ export class LoginScene extends Phaser.Scene {
         const result = await this.authService.login(username, password);
         GameDataStore.getInstance().setPlayerData(result.user);
         console.log('Login successful');
-        this.scene.start(SCENE_KEYS.LOBBY);
+        this.scene.start(SCENE_KEYS.HOME);
       } catch (error) {
         console.error('Login failed:', error);
         const message = error instanceof Error
@@ -466,7 +418,7 @@ export class LoginScene extends Phaser.Scene {
         const result = await this.authService.register(username, email, password);
         GameDataStore.getInstance().setPlayerData(result.user);
         console.log('Registration successful');
-        this.scene.start(SCENE_KEYS.LOBBY);
+        this.scene.start(SCENE_KEYS.HOME);
       } catch (error) {
         console.error('Registration failed:', error);
         const message = error instanceof Error
@@ -480,7 +432,7 @@ export class LoginScene extends Phaser.Scene {
   private async handleGuestLogin(): Promise<void> {
     console.log('Guest login - bypassing authentication');
     httpClient.setAccessToken('guest-dev-token');
-    this.scene.start(SCENE_KEYS.LOBBY);
+    this.scene.start(SCENE_KEYS.HOME);
   }
 
   private showError(message: string): void {

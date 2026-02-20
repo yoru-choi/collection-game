@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { ok } from '../../utils/response';
 import { gameService } from '../../services/gameService';
 import { getPagination, sendResult } from '../http';
 
@@ -8,8 +7,15 @@ export const gameSocialHandler = {
     sendResult(res, gameService.getArena(req.userId!));
   },
 
-  updateArenaDefense: (_req: Request, res: Response): void => {
-    ok(res, { updated: true });
+  updateArenaDefense: (req: Request, res: Response): void => {
+    const ids = Array.isArray(req.body?.character_ids)
+      ? req.body.character_ids.map((v: unknown) => Number(v)).filter((v: number) => Number.isFinite(v))
+      : [];
+    sendResult(res, gameService.setArenaDefenseTeam(req.userId!, ids));
+  },
+
+  getArenaDefense: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getArenaDefenseTeam(req.userId!));
   },
 
   getArenaRanking: (req: Request, res: Response): void => {
@@ -61,8 +67,8 @@ export const gameSocialHandler = {
     sendResult(res, gameService.getGuildMembers(Number(req.params.id)));
   },
 
-  getShopItems: (_req: Request, res: Response): void => {
-    sendResult(res, gameService.getShopItems());
+  getShopItems: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getShopItems(req.userId!));
   },
 
   purchaseShopItem: (req: Request, res: Response): void => {
@@ -80,12 +86,12 @@ export const gameSocialHandler = {
     sendResult(res, gameService.getDailyQuests(req.userId!));
   },
 
-  getWeeklyQuests: (_req: Request, res: Response): void => {
-    ok(res, []);
+  getWeeklyQuests: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getWeeklyQuests(req.userId!));
   },
 
-  getAchievements: (_req: Request, res: Response): void => {
-    ok(res, []);
+  getAchievements: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getAchievements(req.userId!));
   },
 
   completeQuest: (req: Request, res: Response): void => {
@@ -97,6 +103,14 @@ export const gameSocialHandler = {
   },
 
   getDailyLogin: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getDailyLoginStatus(req.userId!));
+  },
+
+  claimDailyLogin: (req: Request, res: Response): void => {
     sendResult(res, gameService.claimDailyLogin(req.userId!));
+  },
+
+  getUserItems: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getUserItems(req.userId!));
   },
 };

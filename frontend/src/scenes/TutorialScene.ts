@@ -445,9 +445,9 @@ export class TutorialScene extends Phaser.Scene {
     // Mark tutorial as completed in game data
     // In a real implementation, this would update user profile
 
-    // Transition to main lobby
+    // Transition to home world
     this.time.delayedCall(2000, () => {
-      this.scene.start(SCENE_KEYS.LOBBY);
+      this.scene.start(SCENE_KEYS.HOME);
     });
   }
 }

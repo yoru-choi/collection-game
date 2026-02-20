@@ -11,13 +11,20 @@ export const gameSocialRepository = {
   leaveGuild: (userId: number, guildId: number) => dataStore.leaveGuild(userId, guildId),
   getGuildMembers: (guildId: number) => dataStore.getGuildMembers(guildId),
 
-  getShopItems: () => dataStore.getShopItems(),
+  getShopItems: (userId?: number) => dataStore.getShopItems(userId),
   purchaseItem: (userId: number, shopItemId: number, quantity: number) => dataStore.purchaseItem(userId, shopItemId, quantity),
   getShopHistory: (userId: number) => dataStore.getShopHistory(userId),
 
   getDailyQuests: (userId: number) => dataStore.getDailyQuests(userId),
+  getWeeklyQuests: (userId: number) => dataStore.getWeeklyQuests(userId),
+  getAchievements: (userId: number) => dataStore.getAchievements(userId),
   completeQuest: (questId: number) => dataStore.completeQuest(questId),
   claimQuest: (userId: number, questId: number) => dataStore.claimQuest(userId, questId),
 
+  getDailyLoginStatus: (userId: number) => dataStore.getDailyLoginStatus(userId),
   claimDailyLogin: (userId: number) => dataStore.claimDailyLogin(userId),
+
+  getUserItems: (userId: number) => dataStore.getUserItems(userId),
+  getArenaDefenseTeam: (userId: number) => dataStore.getArenaDefenseTeam(userId),
+  setArenaDefenseTeam: (userId: number, characterIds: number[]) => dataStore.setArenaDefenseTeam(userId, characterIds),
 };

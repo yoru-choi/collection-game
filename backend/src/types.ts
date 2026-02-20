@@ -38,6 +38,10 @@ export interface Character {
   base_atk: number;
   base_def: number;
   base_spd: number;
+  base_crt: number;
+  base_crt_dmg: number;
+  base_acc: number;
+  base_res: number;
   skill_1_id: number;
   skill_2_id: number;
   skill_3_id: number;
@@ -63,7 +67,7 @@ export interface UserCharacter {
   skill_2_level: number;
   skill_3_level: number;
   skill_4_level: number;
-  awakened: boolean;
+  awakened: number;
   obtained_at: string;
 }
 
@@ -160,6 +164,7 @@ export interface BattleState {
     gold: number;
     exp: number;
     crystals: number;
+    character_shards: number;
   };
 }
 
@@ -190,6 +195,10 @@ export interface DungeonWaveEnemy {
   atk: number;
   def: number;
   spd: number;
+  crit_rate: number;
+  crit_damage: number;
+  accuracy: number;
+  resistance: number;
 }
 
 export interface DungeonWaveData {
@@ -215,6 +224,34 @@ export interface DailyLoginData {
   last_login_date: string;
   consecutive_days: number;
   claimed_today: boolean;
+}
+
+export interface UserItem {
+  id: number;
+  user_id: number;
+  item_type: 'character_shard' | 'material' | 'currency';
+  item_id: number;
+  item_name: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestTemplate {
+  id: number;
+  type: 'daily' | 'weekly' | 'achievement';
+  title: string;
+  description: string;
+  condition: string;
+  goal: number;
+  rewards: Array<{ type: string; name: string; quantity: number }>;
+}
+
+export interface AchievementProgress {
+  quest_id: number;
+  progress: number;
+  is_completed: boolean;
+  is_claimed: boolean;
 }
 
 declare global {

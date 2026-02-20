@@ -126,6 +126,7 @@ export const gameDungeonBattleService = {
       gold: 0,
       exp: 0,
       crystals: 0,
+      character_shards: 0,
     };
 
     gameRepository.updateBattle(battle);

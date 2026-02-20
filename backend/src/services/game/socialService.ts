@@ -80,16 +80,31 @@ export const gameSocialService = {
     return serviceOk(gameRepository.getGuildMembers(guildId));
   },
 
-  getShopItems(): ServiceResult<unknown[]> {
-    return serviceOk(gameRepository.getShopItems());
+  getShopItems(userId: number): ServiceResult<unknown[]> {
+    return serviceOk(gameRepository.getShopItems(userId));
   },
 
   purchaseShopItem(userId: number, shopItemId: number, quantity: number): ServiceResult<unknown> {
-    if (!gameRepository.purchaseItem(userId, shopItemId, quantity)) {
-      return serviceFail('purchase failed', 400);
+    const result = gameRepository.purchaseItem(userId, shopItemId, quantity);
+    if (!result || ('error' in result && result.error)) {
+      return serviceFail('purchase failed: insufficient funds, daily limit reached, or invalid item', 400);
     }
+    return serviceOk(result);
+  },
 
-    return serviceOk({ purchased: true });
+  getUserItems(userId: number): ServiceResult<unknown> {
+    return serviceOk(gameRepository.getUserItems(userId));
+  },
+
+  getArenaDefenseTeam(userId: number): ServiceResult<unknown> {
+    return serviceOk({ character_ids: gameRepository.getArenaDefenseTeam(userId) });
+  },
+
+  setArenaDefenseTeam(userId: number, characterIds: number[]): ServiceResult<unknown> {
+    if (!characterIds || characterIds.length < 1 || characterIds.length > 4) {
+      return serviceFail('defense team must include 1~4 characters', 400);
+    }
+    return serviceOk({ character_ids: gameRepository.setArenaDefenseTeam(userId, characterIds) });
   },
 
   getShopHistory(userId: number, page: number, limit: number): ServiceResult<unknown> {
@@ -99,6 +114,14 @@ export const gameSocialService = {
 
   getDailyQuests(userId: number): ServiceResult<unknown[]> {
     return serviceOk(gameRepository.getDailyQuests(userId));
+  },
+
+  getWeeklyQuests(userId: number): ServiceResult<unknown[]> {
+    return serviceOk(gameRepository.getWeeklyQuests(userId));
+  },
+
+  getAchievements(userId: number): ServiceResult<unknown[]> {
+    return serviceOk(gameRepository.getAchievements(userId));
   },
 
   completeQuest(questId: number): ServiceResult<unknown> {
@@ -112,10 +135,14 @@ export const gameSocialService = {
   claimQuest(userId: number, questId: number): ServiceResult<unknown> {
     const result = gameRepository.claimQuest(userId, questId);
     if (!result) {
-      return serviceFail('quest claim failed', 400);
+      return serviceFail('quest claim failed: not completed, already claimed, or not found', 400);
     }
 
     return serviceOk(result);
+  },
+
+  getDailyLoginStatus(userId: number): ServiceResult<unknown> {
+    return serviceOk(gameRepository.getDailyLoginStatus(userId));
   },
 
   claimDailyLogin(userId: number): ServiceResult<unknown> {

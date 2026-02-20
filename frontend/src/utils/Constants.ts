@@ -52,7 +52,9 @@ export const SCENE_KEYS = {
   BOOT: 'BootScene',
   LOGIN: 'LoginScene',
   TUTORIAL: 'TutorialScene',
+  HOME: 'HomeScene',
   LOBBY: 'LobbyScene',
+  PARTY: 'PartyScene',
   CHARACTER_LIST: 'CharacterListScene',
   CHARACTER_DETAIL: 'CharacterDetailScene',
   SUMMON: 'SummonScene',
@@ -228,8 +230,8 @@ export const COLORS = {
   
   // Neutral Colors (Warm)
   LIGHT: 0xf1ede3,
-  DARK: 0x2a2620,
-  DARKER: 0x17140f,
+  DARK: 0x332e28,
+  DARKER: 0x242018,
   WHITE: 0xffffff,
   BLACK: 0x000000,
   
@@ -239,9 +241,10 @@ export const COLORS = {
   TEXT_MUTED: 0x9a907f,
   
   // Background Gradients
-  BG_START: 0x18150f,
-  BG_END: 0x2a261e,
-  BG_ACCENT: 0x3a3327,
+  BG_START: 0x2c2824,
+  BG_END: 0x3a3530,
+  BG_ACCENT: 0x4a4338,
+  BG_PANEL: 0x3a3530,
   
   // Grade Colors - Fantasy
   GRADE_1: 0x8f8a7a,
@@ -261,6 +264,10 @@ export const COLORS = {
   GOLD: 0xd4af37,
   SILVER: 0xbcb4a5,
   BRONZE: 0x9c6b2f,
+
+  // Casual card backgrounds (warmer, brighter)
+  BG_CARD: 0x443e38,
+  BG_CARD_HOVER: 0x544e48,
 };
 
 // UI Constants
@@ -269,13 +276,14 @@ export const UI = {
   BUTTON_HEIGHT: 50,
   BUTTON_WIDTH: 150,
   PANEL_PADDING: 15,
-  BORDER_RADIUS: 12,
+  BORDER_RADIUS: 16,
+  BORDER_RADIUS_LARGE: 20,
   SHADOW_OFFSET: 4,
   SHADOW_BLUR: 8,
   FONTS: {
-    TITLE: '"Cinzel", "Noto Serif KR", serif',
-    BODY: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
-    UI: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
+    TITLE: '"Nunito", "Noto Sans KR", sans-serif',
+    BODY: '"Nunito", "Noto Sans KR", sans-serif',
+    UI: '"Nunito", "Noto Sans KR", sans-serif',
   },
   FONT_SIZE: {
     TINY: 12,
@@ -289,6 +297,7 @@ export const UI = {
     FAST: 150,
     NORMAL: 300,
     SLOW: 500,
+    BOUNCE: 400,
   },
 };
 

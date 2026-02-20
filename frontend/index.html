@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="description" content="캐릭터 수집형 RPG 게임 - Windows, iPad, 모바일 모두 지원" />
-    <meta name="theme-color" content="#18150f" />
+    <meta name="theme-color" content="#2c2824" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&family=Noto+Serif+KR:wght@600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Noto+Sans+KR:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
     <title>Collection RPG</title>
@@ -18,9 +18,9 @@
         --crystal: #3fb6c6;
         --ink: #f4efe3;
         --ink-muted: #c8c1b3;
-        --bg-1: #18150f;
-        --bg-2: #27231b;
-        --bg-3: #332c22;
+        --bg-1: #2c2824;
+        --bg-2: #342f2a;
+        --bg-3: #3a3530;
       }
 
       * {
@@ -30,25 +30,11 @@
       }
       body {
         overflow: hidden;
-        background: #0a0a0a;
+        background: #1e1a16;
         color: var(--ink);
         font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
         touch-action: manipulation; /* 모바일 터치 최적화 */
         -webkit-tap-highlight-color: transparent; /* iOS 탭 하이라이트 제거 */
-      }
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        background: repeating-linear-gradient(
-          45deg,
-          rgba(255, 255, 255, 0.03) 0,
-          rgba(255, 255, 255, 0.03) 1px,
-          transparent 1px,
-          transparent 6px
-        );
-        pointer-events: none;
-        opacity: 0.35;
       }
       #game-container {
         display: flex;
@@ -57,11 +43,10 @@
         width: 100vw;
         height: 100vh;
         position: relative;
-        background: #050505;
+        background: #1a1612;
       }
       #game-container canvas {
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 0 6px rgba(0, 0, 0, 0.9),
-          0 0 0 8px rgba(255, 255, 255, 0.06);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(212, 175, 55, 0.2);
         border-radius: 22px;
       }
       /* 모바일 주소창 숨김 대응 */
@@ -79,7 +64,7 @@
         justify-content: center;
         text-align: center;
         background: radial-gradient(400px 200px at 50% 40%, rgba(63, 182, 198, 0.2), transparent 60%),
-          linear-gradient(160deg, #0a0a0a, #121212);
+          linear-gradient(160deg, #1e1a16, #2c2824);
         color: var(--ink);
         z-index: 9999;
       }
@@ -90,12 +75,12 @@
         padding: 28px 32px;
         border-radius: 16px;
         border: 2px solid rgba(212, 175, 55, 0.7);
-        background: rgba(10, 10, 10, 0.85);
+        background: rgba(30, 26, 22, 0.9);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
         max-width: 320px;
       }
       #orientation-lock .panel h1 {
-        font-family: "Cinzel", "Noto Serif KR", serif;
+        font-family: "Nunito", "Noto Sans KR", sans-serif;
         font-size: 22px;
         margin-bottom: 10px;
         color: var(--gold);

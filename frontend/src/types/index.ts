@@ -27,6 +27,10 @@ export interface Character {
   baseAtk: number;
   baseDef: number;
   baseSpd: number;
+  baseCrt: number;
+  baseCrtDmg: number;
+  baseAcc: number;
+  baseRes: number;
   skill1Id: string;
   skill2Id: string;
   skill3Id: string;

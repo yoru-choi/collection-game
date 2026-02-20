@@ -16,6 +16,7 @@ export const createApiRouter = (): Router => {
   router.get('/user/profile', gameHandler.getProfile);
   router.put('/user/profile', gameHandler.updateProfile);
   router.get('/user/inventory', gameHandler.getInventory);
+  router.get('/user/items', gameHandler.getUserItems);
 
   router.get('/characters', gameHandler.getCharacters);
   router.get('/characters/:id', gameHandler.getCharacter);
@@ -45,6 +46,7 @@ export const createApiRouter = (): Router => {
   router.get('/battle/:id/result', gameHandler.getBattleResult);
 
   router.get('/arena', gameHandler.getArena);
+  router.get('/arena/defense', gameHandler.getArenaDefense);
   router.put('/arena/defense', gameHandler.updateArenaDefense);
   router.post('/arena/defense', gameHandler.updateArenaDefense);
   router.get('/arena/ranking', gameHandler.getArenaRanking);
@@ -71,6 +73,7 @@ export const createApiRouter = (): Router => {
   router.post('/quests/:id/claim', gameHandler.claimQuest);
 
   router.get('/login/daily', gameHandler.getDailyLogin);
+  router.post('/login/daily/claim', gameHandler.claimDailyLogin);
 
   return router;
 };

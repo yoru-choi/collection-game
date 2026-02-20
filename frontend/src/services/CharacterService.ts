@@ -123,6 +123,10 @@ export class CharacterService {
       baseAtk: detail.base_atk ?? detail.baseAtk,
       baseDef: detail.base_def ?? detail.baseDef,
       baseSpd: detail.base_spd ?? detail.baseSpd,
+      baseCrt: detail.base_crt ?? detail.baseCrt ?? 15,
+      baseCrtDmg: detail.base_crt_dmg ?? detail.baseCrtDmg ?? 50,
+      baseAcc: detail.base_acc ?? detail.baseAcc ?? 0,
+      baseRes: detail.base_res ?? detail.baseRes ?? 0,
       skill1Id: String(detail.skill_1_id || detail.skill1Id || ''),
       skill2Id: String(detail.skill_2_id || detail.skill2Id || ''),
       skill3Id: String(detail.skill_3_id || detail.skill3Id || ''),
@@ -149,7 +153,7 @@ export class CharacterService {
       skill2Level: detail.skill_2_level ?? detail.skill2Level ?? 1,
       skill3Level: detail.skill_3_level ?? detail.skill3Level ?? 1,
       skill4Level: detail.skill_4_level ?? detail.skill4Level ?? 1,
-      awakened: detail.awakened ? 1 : 0,
+      awakened: typeof detail.awakened === 'number' ? detail.awakened : (detail.awakened ? 1 : 0),
       obtainedAt: detail.obtained_at || detail.obtainedAt || '',
     };
   }

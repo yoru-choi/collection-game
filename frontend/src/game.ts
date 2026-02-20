@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
 import { TutorialScene } from './scenes/TutorialScene';
+import { HomeScene } from './scenes/HomeScene';
 import { LobbyScene } from './scenes/LobbyScene';
+import { PartyScene } from './scenes/PartyScene';
 import { CharacterListScene } from './scenes/CharacterListScene';
 import { CharacterDetailScene } from './scenes/CharacterDetailScene';
 import { SummonScene } from './scenes/SummonScene';
@@ -42,7 +44,9 @@ const config: Phaser.Types.Core.GameConfig = {
     BootScene,
     LoginScene,
     TutorialScene,
+    HomeScene,
     LobbyScene,
+    PartyScene,
     CharacterListScene,
     CharacterDetailScene,
     SummonScene,

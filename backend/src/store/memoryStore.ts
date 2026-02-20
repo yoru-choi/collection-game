@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { env } from '../config/env';
 import {
   Character, Dungeon, BattleState, BattleUnit, User, UserCharacter,
   SkillDefinition, DungeonWaveData, PurchaseRecord, UserQuestProgress, DailyLoginData,
+  UserItem, QuestTemplate, AchievementProgress,
 } from '../types';
 import { db } from '../db/client';
 import {
@@ -17,10 +18,22 @@ import {
   summonHistory as summonHistoryTable,
   userCharacters as userCharactersTable,
   users as usersTable,
+  userDungeonProgress as userDungeonProgressTable,
+  userItems as userItemsTable,
+  weeklyQuests as weeklyQuestsTable,
+  achievements as achievementsTable,
 } from '../db/schema';
 
 const now = (): string => new Date().toISOString();
 const todayKey = (): string => new Date().toISOString().slice(0, 10);
+const weekKey = (): string => {
+  const d = new Date();
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - day);
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+};
 
 // PRD 4.1: 성급별 최대 레벨
 const MAX_LEVEL_BY_GRADE: Record<number, number> = { 1: 15, 2: 25, 3: 35, 4: 45, 5: 60 };
@@ -117,31 +130,43 @@ const skillDefinitions: SkillDefinition[] = [
 // ============================================================
 // Character Seed Data (15 characters, 5 elements × various classes)
 // ============================================================
+// Class-based CRT stats: { base_crt, base_crt_dmg, base_acc, base_res }
+const CLASS_STATS: Record<string, { crt: number; crt_dmg: number; acc: number; res: number }> = {
+  assassin: { crt: 20, crt_dmg: 60, acc: 10, res: 0 },
+  warrior:  { crt: 15, crt_dmg: 50, acc: 5, res: 5 },
+  tank:     { crt: 10, crt_dmg: 50, acc: 0, res: 15 },
+  mage:     { crt: 15, crt_dmg: 55, acc: 10, res: 5 },
+  healer:   { crt: 10, crt_dmg: 50, acc: 5, res: 10 },
+  support:  { crt: 10, crt_dmg: 50, acc: 5, res: 10 },
+  archer:   { crt: 20, crt_dmg: 55, acc: 15, res: 0 },
+};
+const getClassStats = (cls: string) => CLASS_STATS[cls] || { crt: 15, crt_dmg: 50, acc: 0, res: 0 };
+
 const characters: Character[] = [
   // -- 1-star (Common) ×3
-  { id: 1, name: 'Novice Fighter', grade: 1, element: 'fire', class: 'warrior', base_hp: 850, base_atk: 120, base_def: 70, base_spd: 102, skill_1_id: 101, skill_2_id: 102, skill_3_id: 103, skill_4_id: 104, image_url: '/monsters/warrior_fire_1.png' },
-  { id: 6, name: 'Aqua Priest', grade: 1, element: 'water', class: 'healer', base_hp: 900, base_atk: 75, base_def: 80, base_spd: 96, skill_1_id: 601, skill_2_id: 602, skill_3_id: 603, skill_4_id: 604, image_url: '/monsters/healer_water_1.png' },
-  { id: 13, name: 'Wind Swordsman', grade: 1, element: 'wind', class: 'warrior', base_hp: 820, base_atk: 115, base_def: 72, base_spd: 108, skill_1_id: 1301, skill_2_id: 1302, skill_3_id: 1303, skill_4_id: 1304, image_url: '/monsters/warrior_wind_1.png' },
+  { id: 1, name: 'Novice Fighter', grade: 1, element: 'fire', class: 'warrior', base_hp: 850, base_atk: 120, base_def: 70, base_spd: 102, base_crt: 15, base_crt_dmg: 50, base_acc: 5, base_res: 5, skill_1_id: 101, skill_2_id: 102, skill_3_id: 103, skill_4_id: 104, image_url: '/monsters/warrior_fire_1.png' },
+  { id: 6, name: 'Aqua Priest', grade: 1, element: 'water', class: 'healer', base_hp: 900, base_atk: 75, base_def: 80, base_spd: 96, base_crt: 10, base_crt_dmg: 50, base_acc: 5, base_res: 10, skill_1_id: 601, skill_2_id: 602, skill_3_id: 603, skill_4_id: 604, image_url: '/monsters/healer_water_1.png' },
+  { id: 13, name: 'Wind Swordsman', grade: 1, element: 'wind', class: 'warrior', base_hp: 820, base_atk: 115, base_def: 72, base_spd: 108, base_crt: 15, base_crt_dmg: 50, base_acc: 5, base_res: 5, skill_1_id: 1301, skill_2_id: 1302, skill_3_id: 1303, skill_4_id: 1304, image_url: '/monsters/warrior_wind_1.png' },
 
   // -- 2-star (Uncommon) ×3
-  { id: 2, name: 'Forest Healer', grade: 2, element: 'wind', class: 'support', base_hp: 980, base_atk: 80, base_def: 90, base_spd: 98, skill_1_id: 201, skill_2_id: 202, skill_3_id: 203, skill_4_id: 204, image_url: '/monsters/support_wind_1.png' },
-  { id: 3, name: 'Water Archer', grade: 2, element: 'water', class: 'archer', base_hp: 760, base_atk: 150, base_def: 60, base_spd: 110, skill_1_id: 301, skill_2_id: 302, skill_3_id: 303, skill_4_id: 304, image_url: '/monsters/archer_water_1.png' },
-  { id: 11, name: 'Frost Guardian', grade: 2, element: 'water', class: 'tank', base_hp: 1200, base_atk: 85, base_def: 130, base_spd: 88, skill_1_id: 1101, skill_2_id: 1102, skill_3_id: 1103, skill_4_id: 1104, image_url: '/monsters/tank_water_1.png' },
+  { id: 2, name: 'Forest Healer', grade: 2, element: 'wind', class: 'support', base_hp: 980, base_atk: 80, base_def: 90, base_spd: 98, base_crt: 10, base_crt_dmg: 50, base_acc: 5, base_res: 10, skill_1_id: 201, skill_2_id: 202, skill_3_id: 203, skill_4_id: 204, image_url: '/monsters/support_wind_1.png' },
+  { id: 3, name: 'Water Archer', grade: 2, element: 'water', class: 'archer', base_hp: 760, base_atk: 150, base_def: 60, base_spd: 110, base_crt: 20, base_crt_dmg: 55, base_acc: 15, base_res: 0, skill_1_id: 301, skill_2_id: 302, skill_3_id: 303, skill_4_id: 304, image_url: '/monsters/archer_water_1.png' },
+  { id: 11, name: 'Frost Guardian', grade: 2, element: 'water', class: 'tank', base_hp: 1200, base_atk: 85, base_def: 130, base_spd: 88, base_crt: 10, base_crt_dmg: 50, base_acc: 0, base_res: 15, skill_1_id: 1101, skill_2_id: 1102, skill_3_id: 1103, skill_4_id: 1104, image_url: '/monsters/tank_water_1.png' },
 
   // -- 3-star (Rare) ×3
-  { id: 4, name: 'Light Knight', grade: 3, element: 'light', class: 'tank', base_hp: 1150, base_atk: 95, base_def: 140, base_spd: 95, skill_1_id: 401, skill_2_id: 402, skill_3_id: 403, skill_4_id: 404, image_url: '/monsters/tank_light_1.png' },
-  { id: 7, name: 'Flame Assassin', grade: 3, element: 'fire', class: 'assassin', base_hp: 720, base_atk: 170, base_def: 55, base_spd: 130, skill_1_id: 701, skill_2_id: 702, skill_3_id: 703, skill_4_id: 704, image_url: '/monsters/assassin_fire_1.png' },
-  { id: 8, name: 'Wind Sorceress', grade: 3, element: 'wind', class: 'mage', base_hp: 780, base_atk: 165, base_def: 60, base_spd: 105, skill_1_id: 801, skill_2_id: 802, skill_3_id: 803, skill_4_id: 804, image_url: '/monsters/mage_wind_1.png' },
+  { id: 4, name: 'Light Knight', grade: 3, element: 'light', class: 'tank', base_hp: 1150, base_atk: 95, base_def: 140, base_spd: 95, base_crt: 10, base_crt_dmg: 50, base_acc: 0, base_res: 15, skill_1_id: 401, skill_2_id: 402, skill_3_id: 403, skill_4_id: 404, image_url: '/monsters/tank_light_1.png' },
+  { id: 7, name: 'Flame Assassin', grade: 3, element: 'fire', class: 'assassin', base_hp: 720, base_atk: 170, base_def: 55, base_spd: 130, base_crt: 20, base_crt_dmg: 60, base_acc: 10, base_res: 0, skill_1_id: 701, skill_2_id: 702, skill_3_id: 703, skill_4_id: 704, image_url: '/monsters/assassin_fire_1.png' },
+  { id: 8, name: 'Wind Sorceress', grade: 3, element: 'wind', class: 'mage', base_hp: 780, base_atk: 165, base_def: 60, base_spd: 105, base_crt: 15, base_crt_dmg: 55, base_acc: 10, base_res: 5, skill_1_id: 801, skill_2_id: 802, skill_3_id: 803, skill_4_id: 804, image_url: '/monsters/mage_wind_1.png' },
 
   // -- 4-star (Epic) ×3
-  { id: 5, name: 'Dark Mage', grade: 4, element: 'dark', class: 'mage', base_hp: 790, base_atk: 180, base_def: 65, base_spd: 105, skill_1_id: 501, skill_2_id: 502, skill_3_id: 503, skill_4_id: 504, image_url: '/monsters/mage_dark_1.png' },
-  { id: 9, name: 'Holy Priestess', grade: 4, element: 'light', class: 'healer', base_hp: 1050, base_atk: 90, base_def: 100, base_spd: 100, skill_1_id: 901, skill_2_id: 902, skill_3_id: 903, skill_4_id: 904, image_url: '/monsters/healer_light_1.png' },
-  { id: 14, name: 'Shadow Sentinel', grade: 4, element: 'dark', class: 'tank', base_hp: 1300, base_atk: 100, base_def: 150, base_spd: 90, skill_1_id: 1401, skill_2_id: 1402, skill_3_id: 1403, skill_4_id: 1404, image_url: '/monsters/tank_dark_1.png' },
+  { id: 5, name: 'Dark Mage', grade: 4, element: 'dark', class: 'mage', base_hp: 790, base_atk: 180, base_def: 65, base_spd: 105, base_crt: 15, base_crt_dmg: 55, base_acc: 10, base_res: 5, skill_1_id: 501, skill_2_id: 502, skill_3_id: 503, skill_4_id: 504, image_url: '/monsters/mage_dark_1.png' },
+  { id: 9, name: 'Holy Priestess', grade: 4, element: 'light', class: 'healer', base_hp: 1050, base_atk: 90, base_def: 100, base_spd: 100, base_crt: 10, base_crt_dmg: 50, base_acc: 5, base_res: 10, skill_1_id: 901, skill_2_id: 902, skill_3_id: 903, skill_4_id: 904, image_url: '/monsters/healer_light_1.png' },
+  { id: 14, name: 'Shadow Sentinel', grade: 4, element: 'dark', class: 'tank', base_hp: 1300, base_atk: 100, base_def: 150, base_spd: 90, base_crt: 10, base_crt_dmg: 50, base_acc: 0, base_res: 15, skill_1_id: 1401, skill_2_id: 1402, skill_3_id: 1403, skill_4_id: 1404, image_url: '/monsters/tank_dark_1.png' },
 
   // -- 5-star (Legendary) ×3
-  { id: 10, name: 'Shadow Reaper', grade: 5, element: 'dark', class: 'assassin', base_hp: 820, base_atk: 210, base_def: 60, base_spd: 140, skill_1_id: 1001, skill_2_id: 1002, skill_3_id: 1003, skill_4_id: 1004, image_url: '/monsters/assassin_dark_1.png' },
-  { id: 12, name: 'Inferno Archmage', grade: 5, element: 'fire', class: 'mage', base_hp: 830, base_atk: 200, base_def: 60, base_spd: 108, skill_1_id: 1201, skill_2_id: 1202, skill_3_id: 1203, skill_4_id: 1204, image_url: '/monsters/mage_fire_1.png' },
-  { id: 15, name: 'Celestial Sage', grade: 5, element: 'light', class: 'mage', base_hp: 850, base_atk: 195, base_def: 70, base_spd: 112, skill_1_id: 1501, skill_2_id: 1502, skill_3_id: 1503, skill_4_id: 1504, image_url: '/monsters/mage_light_1.png' },
+  { id: 10, name: 'Shadow Reaper', grade: 5, element: 'dark', class: 'assassin', base_hp: 820, base_atk: 210, base_def: 60, base_spd: 140, base_crt: 20, base_crt_dmg: 60, base_acc: 10, base_res: 0, skill_1_id: 1001, skill_2_id: 1002, skill_3_id: 1003, skill_4_id: 1004, image_url: '/monsters/assassin_dark_1.png' },
+  { id: 12, name: 'Inferno Archmage', grade: 5, element: 'fire', class: 'mage', base_hp: 830, base_atk: 200, base_def: 60, base_spd: 108, base_crt: 15, base_crt_dmg: 55, base_acc: 10, base_res: 5, skill_1_id: 1201, skill_2_id: 1202, skill_3_id: 1203, skill_4_id: 1204, image_url: '/monsters/mage_fire_1.png' },
+  { id: 15, name: 'Celestial Sage', grade: 5, element: 'light', class: 'mage', base_hp: 850, base_atk: 195, base_def: 70, base_spd: 112, base_crt: 15, base_crt_dmg: 55, base_acc: 10, base_res: 5, skill_1_id: 1501, skill_2_id: 1502, skill_3_id: 1503, skill_4_id: 1504, image_url: '/monsters/mage_light_1.png' },
 ];
 
 // ============================================================
@@ -178,6 +203,10 @@ const makeWaveEnemies = (chapter: number, stage: number, difficulty: string, wav
       atk: Math.round((70 + stage * 12 + wave * 8) * diffMult.atk),
       def: Math.round((45 + stage * 8 + wave * 5) * diffMult.def),
       spd: 85 + wave * 3 + stage * 2,
+      crit_rate: difficulty === 'hell' ? 15 : difficulty === 'hard' ? 10 : 5,
+      crit_damage: difficulty === 'hell' ? 60 : 50,
+      accuracy: difficulty === 'hell' ? 20 : difficulty === 'hard' ? 10 : 0,
+      resistance: difficulty === 'hell' ? 20 : difficulty === 'hard' ? 10 : 0,
     };
   });
 };
@@ -275,6 +304,22 @@ const purchaseHistory = new Map<number, Map<string, PurchaseRecord[]>>();
 // Quest progress per user: userId → Map<questId, UserQuestProgress>
 const userQuestProgress = new Map<number, Map<number, UserQuestProgress>>();
 
+// Weekly quest progress per user: userId → Map<questId, UserQuestProgress>
+const userWeeklyProgress = new Map<number, Map<number, UserQuestProgress>>();
+
+// Achievement progress per user: userId → Map<achievementId, AchievementProgress>
+const userAchievementProgress = new Map<number, Map<number, AchievementProgress>>();
+
+// Cumulative counters for achievements: userId → Map<conditionType, number>
+const userCumulativeStats = new Map<number, Map<string, number>>();
+
+// User items (character shards, materials): userId → Map<itemKey, UserItem>
+const userItemsMap = new Map<number, Map<string, UserItem>>();
+let userItemIdSeq = 1;
+
+// Arena defense team: userId → userCharacterId[]
+const arenaDefenseTeam = new Map<number, number[]>();
+
 // Daily login: userId → DailyLoginData
 const dailyLogin = new Map<number, DailyLoginData>();
 
@@ -312,6 +357,29 @@ const dailyQuestTemplates = [
   { id: 2, type: 'daily' as const, title: 'Clear 3 Dungeons', description: 'Complete any dungeon 3 times', condition: 'dungeon_clear', goal: 3, rewards: [{ type: 'currency', name: 'crystal', quantity: 30 }] },
   { id: 3, type: 'daily' as const, title: 'Summon 1 Time', description: 'Perform a summon', condition: 'summon', goal: 1, rewards: [{ type: 'currency', name: 'gold', quantity: 2000 }] },
   { id: 4, type: 'daily' as const, title: 'Level Up a Character', description: 'Level up any character once', condition: 'level_up', goal: 1, rewards: [{ type: 'currency', name: 'crystal', quantity: 20 }] },
+];
+
+// ============================================================
+// Weekly Quest templates
+// ============================================================
+const weeklyQuestTemplates: QuestTemplate[] = [
+  { id: 101, type: 'weekly', title: 'Clear 10 Dungeons', description: 'Complete any dungeon 10 times this week', condition: 'dungeon_clear', goal: 10, rewards: [{ type: 'currency', name: 'crystal', quantity: 50 }] },
+  { id: 102, type: 'weekly', title: 'Summon 5 Times', description: 'Perform 5 summons this week', condition: 'summon', goal: 5, rewards: [{ type: 'currency', name: 'gold', quantity: 10000 }] },
+  { id: 103, type: 'weekly', title: 'Level Up 3 Characters', description: 'Level up any 3 characters this week', condition: 'level_up', goal: 3, rewards: [{ type: 'currency', name: 'crystal', quantity: 30 }] },
+  { id: 104, type: 'weekly', title: 'Win 5 Arena Battles', description: 'Win 5 battles in Arena this week', condition: 'arena_win', goal: 5, rewards: [{ type: 'currency', name: 'crystal', quantity: 80 }] },
+];
+
+// ============================================================
+// Achievement templates
+// ============================================================
+const achievementTemplates: QuestTemplate[] = [
+  { id: 201, type: 'achievement', title: 'First Victory', description: 'Clear your first dungeon', condition: 'dungeon_clear_total', goal: 1, rewards: [{ type: 'currency', name: 'crystal', quantity: 100 }] },
+  { id: 202, type: 'achievement', title: 'Summoner Beginner', description: 'Summon 10 characters', condition: 'summon_total', goal: 10, rewards: [{ type: 'currency', name: 'crystal', quantity: 50 }] },
+  { id: 203, type: 'achievement', title: 'Summoner Intermediate', description: 'Summon 50 characters', condition: 'summon_total', goal: 50, rewards: [{ type: 'currency', name: 'crystal', quantity: 200 }] },
+  { id: 204, type: 'achievement', title: 'Dungeon Explorer', description: 'Clear 10 different dungeons', condition: 'dungeon_clear_total', goal: 10, rewards: [{ type: 'currency', name: 'crystal', quantity: 100 }] },
+  { id: 205, type: 'achievement', title: 'Dungeon Master', description: 'Clear 30 different dungeons', condition: 'dungeon_clear_total', goal: 30, rewards: [{ type: 'currency', name: 'crystal', quantity: 300 }] },
+  { id: 206, type: 'achievement', title: 'Power Leveler', description: 'Level up characters 20 times total', condition: 'level_up_total', goal: 20, rewards: [{ type: 'currency', name: 'gold', quantity: 20000 }] },
+  { id: 207, type: 'achievement', title: 'Loyal Player', description: 'Log in 7 consecutive days', condition: 'login_streak', goal: 7, rewards: [{ type: 'currency', name: 'crystal', quantity: 200 }] },
 ];
 
 // ============================================================
@@ -385,6 +453,10 @@ const mapCharacterFromDb = (row: typeof charactersTable.$inferSelect): Character
   base_atk: row.baseAtk,
   base_def: row.baseDef,
   base_spd: row.baseSpd,
+  base_crt: row.baseCrt,
+  base_crt_dmg: row.baseCrtDmg,
+  base_acc: row.baseAcc,
+  base_res: row.baseRes,
   skill_1_id: row.skill1Id || 0,
   skill_2_id: row.skill2Id || 0,
   skill_3_id: row.skill3Id || 0,
@@ -419,7 +491,7 @@ const mapUserCharacterFromDb = (row: typeof userCharactersTable.$inferSelect): U
 // ============================================================
 const hydrateFromDb = async (): Promise<void> => {
   try {
-    const [dbUsers, dbCharacters, dbDungeons, dbUserChars, dbParty, dbGuilds, dbGuildMembers, dbShopItems, dbQuests] = await Promise.all([
+    const [dbUsers, dbCharacters, dbDungeons, dbUserChars, dbParty, dbGuilds, dbGuildMembers, dbShopItems, dbQuests, dbDungeonProgress, dbUserItems] = await Promise.all([
       db.select().from(usersTable),
       db.select().from(charactersTable),
       db.select().from(dungeonsTable),
@@ -429,6 +501,8 @@ const hydrateFromDb = async (): Promise<void> => {
       db.select().from(guildMembersTable),
       db.select().from(shopItemsTable).where(eq(shopItemsTable.isActive, true)),
       db.select().from(questsTable).where(and(eq(questsTable.isActive, true), eq(questsTable.questType, 'daily'))),
+      db.select().from(userDungeonProgressTable).catch(() => [] as (typeof userDungeonProgressTable.$inferSelect)[]),
+      db.select().from(userItemsTable).catch(() => [] as (typeof userItemsTable.$inferSelect)[]),
     ]);
 
     if (dbUsers.length > 0) {
@@ -467,19 +541,29 @@ const hydrateFromDb = async (): Promise<void> => {
 
     if (dbDungeons.length > 0) {
       dungeons.length = 0;
-      dungeons.push(...dbDungeons.map((row) => ({
-        id: row.id,
-        name: row.name,
-        dungeon_type: row.dungeonType,
-        difficulty: row.difficulty,
-        chapter: row.chapter,
-        stage: row.stage,
-        energy_cost: row.energyCost,
-        stages: Array.isArray(row.stages) ? row.stages as Array<{ stage_number: number; waves: number }> : [],
-        rewards: Array.isArray(row.rewards) ? row.rewards as Array<{ type: string; name?: string; amount: number }> : [],
-        exp_reward: row.expReward,
-        gold_reward: row.goldReward,
-      })));
+      dungeons.push(...dbDungeons.map((row) => {
+        const rewardsArr = Array.isArray(row.rewards) ? row.rewards as Array<{ type: string; name?: string; amount: number }> : [];
+        // Extract crystal and shard rewards from JSONB rewards array
+        const crystalReward = rewardsArr.find((r) => r.name === 'crystal' || r.type === 'crystal')?.amount || 0;
+        const shardReward = rewardsArr.find((r) => r.name === 'character_shard' || r.type === 'character_shard')?.amount || 0;
+        return {
+          id: row.id,
+          name: row.name,
+          dungeon_type: row.dungeonType,
+          difficulty: row.difficulty,
+          chapter: row.chapter,
+          stage: row.stage,
+          energy_cost: row.energyCost,
+          stages: Array.isArray(row.stages) ? row.stages as Array<{ stage_number: number; waves: number }> : [],
+          rewards: rewardsArr,
+          exp_reward: row.expReward,
+          gold_reward: row.goldReward,
+          crystal_reward: crystalReward,
+          character_shard_reward: shardReward,
+          // Regenerate wave data from chapter/stage/difficulty
+          wave_data: makeWaveData(row.chapter, row.stage, row.difficulty),
+        };
+      }));
     }
 
     if (dbUserChars.length > 0) {
@@ -536,6 +620,43 @@ const hydrateFromDb = async (): Promise<void> => {
         daily_limit: row.stock,
       })));
     }
+
+    // Load dungeon progress
+    if (dbDungeonProgress.length > 0) {
+      dungeonCleared.clear();
+      dbDungeonProgress.forEach((row) => {
+        let set = dungeonCleared.get(row.userId);
+        if (!set) {
+          set = new Set();
+          dungeonCleared.set(row.userId, set);
+        }
+        set.add(row.dungeonId);
+      });
+    }
+
+    // Load user items (shards, materials)
+    if (dbUserItems.length > 0) {
+      userItemsMap.clear();
+      dbUserItems.forEach((row) => {
+        let items = userItemsMap.get(row.userId);
+        if (!items) {
+          items = new Map();
+          userItemsMap.set(row.userId, items);
+        }
+        const key = `${row.itemType}:${row.itemId}`;
+        items.set(key, {
+          id: row.id,
+          user_id: row.userId,
+          item_type: row.itemType as UserItem['item_type'],
+          item_id: row.itemId,
+          item_name: row.itemName,
+          quantity: row.quantity,
+          created_at: row.createdAt,
+          updated_at: row.updatedAt,
+        });
+      });
+      userItemIdSeq = Math.max(...dbUserItems.map((r) => r.id), 0) + 1;
+    }
   } catch (error) {
     console.warn('[db-hydrate] fallback to in-memory seed:', error);
   }
@@ -554,15 +675,15 @@ const makeUserCharacter = (userId: number, character: Character): UserCharacter 
   current_atk: character.base_atk,
   current_def: character.base_def,
   current_spd: character.base_spd,
-  crit_rate: 15,
-  crit_damage: 50,
-  accuracy: 0,
-  resistance: 0,
+  crit_rate: character.base_crt,
+  crit_damage: character.base_crt_dmg,
+  accuracy: character.base_acc,
+  resistance: character.base_res,
   skill_1_level: 1,
   skill_2_level: 1,
   skill_3_level: 1,
   skill_4_level: 1,
-  awakened: false,
+  awakened: 0,
   obtained_at: now(),
 });
 
@@ -592,16 +713,249 @@ const ensureUserQuests = (userId: number): Map<number, UserQuestProgress> => {
   return quests;
 };
 
+// ─── Weekly Quest helpers ───────────────────────────────────
+const ensureUserWeeklyQuests = (userId: number): Map<number, UserQuestProgress> => {
+  let map = userWeeklyProgress.get(userId);
+  if (!map) {
+    map = new Map();
+    userWeeklyProgress.set(userId, map);
+  }
+  const wk = weekKey();
+  weeklyQuestTemplates.forEach((template) => {
+    const existing = map!.get(template.id);
+    if (!existing || existing.reset_at !== wk) {
+      map!.set(template.id, {
+        quest_id: template.id,
+        progress: 0,
+        is_completed: false,
+        is_claimed: false,
+        reset_at: wk,
+      });
+    }
+  });
+  return map;
+};
+
+// ─── Achievement helpers ─────────────────────────────────────
+const ensureUserAchievements = (userId: number): Map<number, AchievementProgress> => {
+  let map = userAchievementProgress.get(userId);
+  if (!map) {
+    map = new Map();
+    userAchievementProgress.set(userId, map);
+    achievementTemplates.forEach((tmpl) => {
+      map!.set(tmpl.id, { quest_id: tmpl.id, progress: 0, is_completed: false, is_claimed: false });
+    });
+  }
+  return map;
+};
+
 const advanceQuestProgress = (userId: number, condition: string, amount: number = 1): void => {
+  // Daily quests
   const quests = ensureUserQuests(userId);
   dailyQuestTemplates.forEach((template) => {
     if (template.condition !== condition) return;
     const progress = quests.get(template.id);
     if (!progress || progress.is_completed) return;
     progress.progress = Math.min(progress.progress + amount, template.goal);
-    if (progress.progress >= template.goal) {
-      progress.is_completed = true;
+    if (progress.progress >= template.goal) progress.is_completed = true;
+  });
+
+  // Weekly quests
+  const weekly = ensureUserWeeklyQuests(userId);
+  weeklyQuestTemplates.forEach((template) => {
+    if (template.condition !== condition) return;
+    const progress = weekly.get(template.id);
+    if (!progress || progress.is_completed) return;
+    progress.progress = Math.min(progress.progress + amount, template.goal);
+    if (progress.progress >= template.goal) progress.is_completed = true;
+  });
+
+  // Achievements (cumulative condition mapping)
+  const cumStats = userCumulativeStats.get(userId) || new Map<string, number>();
+  userCumulativeStats.set(userId, cumStats);
+  // Map event condition → cumulative stat key
+  const cumKey: Record<string, string> = {
+    dungeon_clear: 'dungeon_clear_total',
+    summon: 'summon_total',
+    level_up: 'level_up_total',
+    login: 'login_streak',
+  };
+  const statKey = cumKey[condition];
+  if (statKey) {
+    cumStats.set(statKey, (cumStats.get(statKey) || 0) + amount);
+  }
+  const achievements = ensureUserAchievements(userId);
+  achievementTemplates.forEach((tmpl) => {
+    const prog = achievements.get(tmpl.id);
+    if (!prog || prog.is_completed) return;
+    // Determine current cumulative value
+    let current = 0;
+    if (tmpl.condition.endsWith('_total') || tmpl.condition === 'login_streak') {
+      current = cumStats.get(tmpl.condition) || 0;
+    } else if (cumKey[tmpl.condition]) {
+      current = cumStats.get(cumKey[tmpl.condition]) || 0;
     }
+    if (current <= 0) return; // not related to this event
+    prog.progress = Math.min(current, tmpl.goal);
+    if (current >= tmpl.goal) prog.is_completed = true;
+  });
+};
+
+// ─── User level-up helper ────────────────────────────────────
+const getUserExpToNextLevel = (level: number): number => level * 500;
+const checkUserLevelUp = (user: User): void => {
+  while (user.exp >= getUserExpToNextLevel(user.level)) {
+    user.exp -= getUserExpToNextLevel(user.level);
+    user.level += 1;
+    // On level-up, increase max energy by 1
+    if (user.level % 5 === 0) {
+      user.maxEnergy = Math.min(user.maxEnergy + 5, 200);
+    }
+  }
+};
+
+const advanceWeeklyQuestProgress = (userId: number, condition: string, amount: number = 1): void => {
+  const quests = ensureUserWeeklyQuests(userId);
+  weeklyQuestTemplates.forEach((template) => {
+    if (template.condition !== condition) return;
+    const progress = quests.get(template.id);
+    if (!progress || progress.is_completed) return;
+    progress.progress = Math.min(progress.progress + amount, template.goal);
+    if (progress.progress >= template.goal) progress.is_completed = true;
+  });
+};
+
+const ensureUserStats = (userId: number): Map<string, number> => {
+  let stats = userCumulativeStats.get(userId);
+  if (!stats) {
+    stats = new Map();
+    userCumulativeStats.set(userId, stats);
+  }
+  return stats;
+};
+
+const advanceCumulativeStat = (userId: number, condition: string, amount: number = 1): void => {
+  const stats = ensureUserStats(userId);
+  const prev = stats.get(condition) || 0;
+  stats.set(condition, prev + amount);
+  const total = stats.get(condition)!;
+
+  const ach = ensureUserAchievements(userId);
+  achievementTemplates.forEach((template) => {
+    if (template.condition !== condition) return;
+    const progress = ach.get(template.id);
+    if (!progress || progress.is_completed) return;
+    progress.progress = Math.min(total, template.goal);
+    if (progress.progress >= template.goal) progress.is_completed = true;
+  });
+};
+
+// ============================================================
+// User items (shards, materials) helpers
+// ============================================================
+const grantUserItem = (userId: number, itemType: UserItem['item_type'], itemId: number, itemName: string, quantity: number): void => {
+  if (quantity <= 0) return;
+  let items = userItemsMap.get(userId);
+  if (!items) {
+    items = new Map();
+    userItemsMap.set(userId, items);
+  }
+  const key = `${itemType}:${itemId}`;
+  const existing = items.get(key);
+  if (existing) {
+    existing.quantity += quantity;
+    existing.updated_at = now();
+    persist(async () => {
+      await db.update(userItemsTable)
+        .set({ quantity: existing.quantity, updatedAt: existing.updated_at })
+        .where(eq(userItemsTable.id, existing.id));
+    });
+  } else {
+    const newItem: UserItem = {
+      id: userItemIdSeq++,
+      user_id: userId,
+      item_type: itemType,
+      item_id: itemId,
+      item_name: itemName,
+      quantity,
+      created_at: now(),
+      updated_at: now(),
+    };
+    items.set(key, newItem);
+    persist(async () => {
+      await db.insert(userItemsTable).values({
+        id: newItem.id,
+        userId: newItem.user_id,
+        itemType: newItem.item_type,
+        itemId: newItem.item_id,
+        itemName: newItem.item_name,
+        quantity: newItem.quantity,
+        createdAt: newItem.created_at,
+        updatedAt: newItem.updated_at,
+      }).onConflictDoUpdate({
+        target: [userItemsTable.userId, userItemsTable.itemType, userItemsTable.itemId],
+        set: { quantity: sql`user_items.quantity + ${quantity}`, updatedAt: now() },
+      });
+    });
+  }
+};
+
+// ============================================================
+// User level-up helper
+// ============================================================
+const USER_EXP_PER_LEVEL = (level: number): number => level * 500;
+
+const maybeUserLevelUp = (user: User): void => {
+  let leveled = false;
+  while (user.exp >= USER_EXP_PER_LEVEL(user.level)) {
+    user.exp -= USER_EXP_PER_LEVEL(user.level);
+    user.level += 1;
+    // Increase max energy by 1 per level
+    user.maxEnergy = Math.min(200, user.maxEnergy + 1);
+    leveled = true;
+  }
+  if (leveled) {
+    user.updatedAt = now();
+    persist(async () => {
+      await db.update(usersTable)
+        .set({ level: user.level, exp: user.exp, maxEnergy: user.maxEnergy, updatedAt: user.updatedAt })
+        .where(eq(usersTable.id, user.id));
+    });
+  }
+};
+
+// ============================================================
+// Battle victory reward helper (called once when battle ends in victory)
+// ============================================================
+const grantBattleVictoryRewards = (userId: number, dungeon: Dungeon): void => {
+  const user = users.get(userId);
+  if (!user) return;
+
+  user.gold += dungeon.gold_reward;
+  user.exp += dungeon.exp_reward;
+  user.crystals += dungeon.crystal_reward || 0;
+  user.updatedAt = now();
+
+  // Grant character shards if any
+  if (dungeon.character_shard_reward && dungeon.character_shard_reward > 0) {
+    grantUserItem(userId, 'character_shard', dungeon.id, `${dungeon.name} Shard`, dungeon.character_shard_reward);
+  }
+
+  // Advance daily quest
+  advanceQuestProgress(userId, 'dungeon_clear');
+  // Advance weekly quest
+  advanceWeeklyQuestProgress(userId, 'dungeon_clear');
+  // Advance cumulative stats for achievements
+  advanceCumulativeStat(userId, 'dungeon_clear_total');
+
+  // Apply user level-up
+  maybeUserLevelUp(user);
+
+  // Persist user currency changes to DB
+  persist(async () => {
+    await db.update(usersTable)
+      .set({ gold: user.gold, exp: user.exp, crystals: user.crystals, level: user.level, maxEnergy: user.maxEnergy, updatedAt: user.updatedAt })
+      .where(eq(usersTable.id, userId));
   });
 };
 
@@ -663,7 +1017,7 @@ const buildEnemySkills = (): BattleUnit['skills'] => {
 // ============================================================
 // Buff/Debuff stat helpers
 // ============================================================
-const BUFF_TYPES = new Set(['atk_up', 'def_up', 'spd_up', 'immunity', 'shield', 'invincible']);
+const BUFF_TYPES = new Set(['atk_up', 'def_up', 'spd_up', 'immunity', 'shield', 'invincible', 'endure']);
 const STATUS_EFFECTS = new Set(['stun', 'poison', 'burn', 'freeze', 'sleep', 'silence']);
 
 const getEffectiveATK = (unit: BattleUnit): number => {
@@ -740,6 +1094,9 @@ const processStatusEffectsForUnit = (
 
     if (d.effect_type === 'stun' || d.effect_type === 'freeze') {
       skipTurn = true;
+    } else if (d.effect_type === 'sleep') {
+      skipTurn = true;
+      // Sleep wake on hit is handled in executeAction damage section
     } else if (d.effect_type === 'poison') {
       const dotDmg = Math.max(1, Math.round(unit.max_hp * 0.05));
       unit.hp = Math.max(0, unit.hp - dotDmg);
@@ -789,15 +1146,25 @@ const processStatusEffectsForUnit = (
 const calculateDamage = (attacker: BattleUnit, defender: BattleUnit, skillMultiplier: number): { damage: number; isCrit: boolean } => {
   const effATK = getEffectiveATK(attacker);
   const effDEF = getEffectiveDEF(defender);
-  const isCrit = Math.random() * 100 < attacker.crit_rate;
+  const hasGlancing = attacker.debuffs.some((d) => d.effect_type === 'glancing');
+  let isCrit = Math.random() * 100 < attacker.crit_rate;
+  if (hasGlancing) isCrit = false; // Glancing hit prevents crits
   const critMultiplier = isCrit ? 1 + attacker.crit_damage / 100 : 1;
+  const glancingMultiplier = hasGlancing ? 0.7 : 1.0;
   const elemBonus = getElementBonus(attacker.element, defender.element);
-  const rawDamage = effATK * skillMultiplier * elemBonus * critMultiplier - effDEF * 0.35;
+  const rawDamage = effATK * skillMultiplier * elemBonus * critMultiplier * glancingMultiplier - effDEF * 0.35;
   const damage = Math.max(1, Math.round(rawDamage));
   return { damage, isCrit };
 };
 
 const pickAiAction = (unit: BattleUnit, aliveEnemies: BattleUnit[], aliveAllies: BattleUnit[]): { skillIdx: number; targets: BattleUnit[] } => {
+  // Taunt: forced to basic attack the taunt source
+  const tauntDebuff = unit.debuffs.find((d) => d.effect_type === 'taunt');
+  if (tauntDebuff) {
+    const tauntSource = [...aliveEnemies, ...aliveAllies].find((u) => u.unit_id === tauntDebuff.source_id && u.is_alive);
+    if (tauntSource) return { skillIdx: 0, targets: [tauntSource] };
+  }
+
   const isSilenced = unit.debuffs.some((d) => d.effect_type === 'silence');
   const maxSkill = isSilenced ? 0 : unit.skills.length - 1;
 
@@ -899,8 +1266,26 @@ const executeAction = (
       if (!target.is_alive) return;
       const { damage, isCrit } = calculateDamage(actor, target, multiplier);
       target.hp = Math.max(0, target.hp - damage);
-      const isKill = target.hp <= 0;
+      let isKill = target.hp <= 0;
+
+      // Endure buff: survive lethal damage with 1 HP
+      if (isKill) {
+        const endureIdx = target.buffs.findIndex((b) => b.effect_type === 'endure');
+        if (endureIdx >= 0) {
+          target.hp = 1;
+          isKill = false;
+          target.buffs.splice(endureIdx, 1);
+        }
+      }
       if (isKill) target.is_alive = false;
+
+      // Sleep wake: 50% chance to wake when hit
+      if (!isKill) {
+        const sleepIdx = target.debuffs.findIndex((d) => d.effect_type === 'sleep');
+        if (sleepIdx >= 0 && Math.random() < 0.5) {
+          target.debuffs.splice(sleepIdx, 1);
+        }
+      }
 
       // Side-effect application (e.g., burn on hit, poison on hit)
       const applied: string[] = [];
@@ -1074,6 +1459,8 @@ export const dataStore = {
     // Initialize quest progress with login quest auto-completed
     ensureUserQuests(id);
     advanceQuestProgress(id, 'login');
+    ensureUserWeeklyQuests(id);
+    ensureUserAchievements(id);
 
     persist(async () => {
       await db.insert(usersTable).values({
@@ -1227,6 +1614,10 @@ export const dataStore = {
       base_atk: base.base_atk,
       base_def: base.base_def,
       base_spd: base.base_spd,
+      base_crt: base.base_crt,
+      base_crt_dmg: base.base_crt_dmg,
+      base_acc: base.base_acc,
+      base_res: base.base_res,
       skill_1_id: base.skill_1_id,
       skill_2_id: base.skill_2_id,
       skill_3_id: base.skill_3_id,
@@ -1272,6 +1663,10 @@ export const dataStore = {
       entry.current_atk += 5;
       entry.current_def += 4;
       entry.current_spd += 1;
+      entry.crit_rate = Math.round((entry.crit_rate + 0.2) * 100) / 100;
+      entry.crit_damage = Math.round((entry.crit_damage + 0.5) * 100) / 100;
+      entry.accuracy = Math.round((entry.accuracy + 0.3) * 100) / 100;
+      entry.resistance = Math.round((entry.resistance + 0.3) * 100) / 100;
     }
 
     // 최대 레벨 도달 시 잉여 exp 초기화
@@ -1281,6 +1676,8 @@ export const dataStore = {
 
     if (entry.level > prevLevel) {
       advanceQuestProgress(userId, 'level_up');
+      advanceWeeklyQuestProgress(userId, 'level_up');
+      advanceCumulativeStat(userId, 'level_up_total');
     }
 
     persist(async () => {
@@ -1292,6 +1689,10 @@ export const dataStore = {
           currentAtk: entry.current_atk,
           currentDef: entry.current_def,
           currentSpd: entry.current_spd,
+          critRate: String(entry.crit_rate),
+          critDamage: String(entry.crit_damage),
+          accuracy: String(entry.accuracy),
+          resistance: String(entry.resistance),
         })
         .where(eq(userCharactersTable.id, userCharacterId));
       await db.update(usersTable)
@@ -1341,6 +1742,10 @@ export const dataStore = {
     entry.current_atk += 30 + base.grade * 8;
     entry.current_def += 25 + base.grade * 6;
     entry.current_spd += 5 + base.grade * 1;
+    entry.crit_rate += 3;
+    entry.crit_damage += 5;
+    entry.accuracy += 5;
+    entry.resistance += 5;
 
     // grade bump is stored on base character - we track it via awakened count
     // actual grade displayed = base.grade + entry.awakened (capped at 5)
@@ -1355,6 +1760,10 @@ export const dataStore = {
           currentAtk: entry.current_atk,
           currentDef: entry.current_def,
           currentSpd: entry.current_spd,
+          critRate: String(entry.crit_rate),
+          critDamage: String(entry.crit_damage),
+          accuracy: String(entry.accuracy),
+          resistance: String(entry.resistance),
         })
         .where(eq(userCharactersTable.id, userCharacterId));
       await db.update(usersTable)
@@ -1498,6 +1907,8 @@ export const dataStore = {
 
     // Advance summon quest
     advanceQuestProgress(userId, 'summon', count);
+    advanceWeeklyQuestProgress(userId, 'summon', count);
+    advanceCumulativeStat(userId, 'summon_total', totalCount);
 
     persist(async () => {
       await db.update(usersTable)
@@ -1608,7 +2019,18 @@ export const dataStore = {
       set = new Set();
       dungeonCleared.set(userId, set);
     }
+    const isNew = !set.has(dungeonId);
     set.add(dungeonId);
+
+    if (isNew) {
+      persist(async () => {
+        await db.insert(userDungeonProgressTable).values({
+          userId,
+          dungeonId,
+          clearedAt: now(),
+        }).onConflictDoNothing();
+      });
+    }
   },
 
   isDungeonUnlocked(userId: number, dungeonId: number): boolean {
@@ -1714,10 +2136,10 @@ export const dataStore = {
           atk: e.atk,
           def: e.def,
           spd: e.spd,
-          crit_rate: 10,
-          crit_damage: 50,
-          accuracy: 0,
-          resistance: 0,
+          crit_rate: e.crit_rate,
+          crit_damage: e.crit_damage,
+          accuracy: e.accuracy,
+          resistance: e.resistance,
           atb_gauge: 0,
           skills: buildEnemySkills(),
           buffs: [],
@@ -1809,16 +2231,11 @@ export const dataStore = {
           gold: dungeon?.gold_reward || 0,
           exp: dungeon?.exp_reward || 0,
           crystals: dungeon?.crystal_reward || 0,
+          character_shards: dungeon?.character_shard_reward || 0,
         };
         if (dungeon && battle.user_id) {
           this.markDungeonCleared(battle.user_id, dungeon.id);
-          advanceQuestProgress(battle.user_id, 'dungeon_clear');
-          const user = this.getUserById(battle.user_id);
-          if (user) {
-            user.gold += dungeon.gold_reward;
-            user.exp += dungeon.exp_reward;
-            user.crystals += dungeon.crystal_reward || 0;
-          }
+          grantBattleVictoryRewards(battle.user_id, dungeon);
         }
       } else {
         battle.result = {
@@ -1828,6 +2245,7 @@ export const dataStore = {
           gold: 0,
           exp: 0,
           crystals: 0,
+          character_shards: 0,
         };
       }
     }
@@ -1858,10 +2276,10 @@ export const dataStore = {
       atk: e.atk,
       def: e.def,
       spd: e.spd,
-      crit_rate: 10,
-      crit_damage: 50,
-      accuracy: 0,
-      resistance: 0,
+      crit_rate: e.crit_rate,
+      crit_damage: e.crit_damage,
+      accuracy: e.accuracy,
+      resistance: e.resistance,
       atb_gauge: 0,
       skills: buildEnemySkills(),
       buffs: [],
@@ -1931,16 +2349,11 @@ export const dataStore = {
           gold: dungeon?.gold_reward || 0,
           exp: dungeon?.exp_reward || 0,
           crystals: dungeon?.crystal_reward || 0,
+          character_shards: dungeon?.character_shard_reward || 0,
         };
         if (dungeon && battle.user_id) {
           this.markDungeonCleared(battle.user_id, dungeon.id);
-          advanceQuestProgress(battle.user_id, 'dungeon_clear');
-          const user = this.getUserById(battle.user_id);
-          if (user) {
-            user.gold += dungeon.gold_reward;
-            user.exp += dungeon.exp_reward;
-            user.crystals += dungeon.crystal_reward || 0;
-          }
+          grantBattleVictoryRewards(battle.user_id, dungeon);
         }
       } else {
         battle.result = {
@@ -1950,6 +2363,7 @@ export const dataStore = {
           gold: 0,
           exp: 0,
           crystals: 0,
+          character_shards: 0,
         };
       }
     }
@@ -1965,19 +2379,33 @@ export const dataStore = {
   // ============================================================
   // Shop
   // ============================================================
-  getShopItems(): Array<Record<string, unknown>> {
-    return shopItems.map((item) => ({
-      ...item,
-      remaining_today: item.daily_limit,
-    }));
+  getShopItems(userId?: number): Array<Record<string, unknown>> {
+    const today = todayKey();
+    return shopItems.map((item) => {
+      let purchasedToday = 0;
+      if (userId !== undefined) {
+        const userPurchases = purchaseHistory.get(userId);
+        if (userPurchases) {
+          const records = userPurchases.get(today) || [];
+          purchasedToday = records
+            .filter((p) => p.shop_item_id === item.id)
+            .reduce((sum, p) => sum + p.quantity, 0);
+        }
+      }
+      return {
+        ...item,
+        purchased_today: purchasedToday,
+        remaining_today: Math.max(0, item.daily_limit - purchasedToday),
+      };
+    });
   },
 
-  purchaseItem(userId: number, shopItemId: number, quantity: number): boolean {
+  purchaseItem(userId: number, shopItemId: number, quantity: number): Record<string, unknown> | null {
     const user = this.getUserById(userId);
     const item = shopItems.find((shopItem) => shopItem.id === shopItemId);
 
     if (!user || !item || quantity <= 0) {
-      return false;
+      return null;
     }
 
     // Check daily limit
@@ -1990,13 +2418,13 @@ export const dataStore = {
     const todayPurchases = userPurchases.get(today) || [];
     const todayBought = todayPurchases.filter((p) => p.shop_item_id === shopItemId).reduce((sum, p) => sum + p.quantity, 0);
     if (todayBought + quantity > item.daily_limit) {
-      return false;
+      return null;
     }
 
     const totalCost = item.price * quantity;
     if (item.currency_type === 'gold') {
       if (user.gold < totalCost) {
-        return false;
+        return null;
       }
       user.gold -= totalCost;
       if (item.item_type === 'energy') {
@@ -2004,7 +2432,7 @@ export const dataStore = {
       }
     } else {
       if (user.crystals < totalCost) {
-        return false;
+        return null;
       }
       user.crystals -= totalCost;
     }
@@ -2024,7 +2452,17 @@ export const dataStore = {
         .where(eq(usersTable.id, userId));
     });
 
-    return true;
+    return {
+      purchased: true,
+      item_id: item.id,
+      item_name: item.name,
+      quantity,
+      total_cost: totalCost,
+      currency_type: item.currency_type,
+      gold: user.gold,
+      crystals: user.crystals,
+      energy: user.energy,
+    };
   },
 
   getShopHistory(userId: number): PurchaseRecord[] {
@@ -2064,43 +2502,144 @@ export const dataStore = {
 
   claimQuest(userId: number, questId: number): Record<string, unknown> | null {
     const user = this.getUserById(userId);
-    const quests = ensureUserQuests(userId);
-    const progress = quests.get(questId);
-    const template = dailyQuestTemplates.find((q) => q.id === questId);
+    if (!user) return null;
 
-    if (!user || !progress || !template || !progress.is_completed || progress.is_claimed) {
-      return null;
+    // Try daily first
+    const daily = ensureUserQuests(userId).get(questId);
+    const dailyTemplate = dailyQuestTemplates.find((q) => q.id === questId);
+    if (daily && dailyTemplate) {
+      if (!daily.is_completed || daily.is_claimed) return null;
+      daily.is_claimed = true;
+      dailyTemplate.rewards.forEach((reward) => {
+        if (reward.name === 'gold') user.gold += reward.quantity;
+        if (reward.name === 'crystal') user.crystals += reward.quantity;
+      });
+      persist(async () => {
+        await db.update(usersTable)
+          .set({ gold: user.gold, crystals: user.crystals, updatedAt: now() })
+          .where(eq(usersTable.id, userId));
+      });
+      return { questId, rewards: dailyTemplate.rewards, gold: user.gold, crystals: user.crystals };
     }
 
-    progress.is_claimed = true;
-    template.rewards.forEach((reward) => {
-      if (reward.name === 'gold') {
-        user.gold += reward.quantity;
-      }
-      if (reward.name === 'crystal') {
-        user.crystals += reward.quantity;
-      }
-    });
+    // Try weekly
+    const weekly = ensureUserWeeklyQuests(userId).get(questId);
+    const weeklyTemplate = weeklyQuestTemplates.find((q) => q.id === questId);
+    if (weekly && weeklyTemplate) {
+      if (!weekly.is_completed || weekly.is_claimed) return null;
+      weekly.is_claimed = true;
+      weeklyTemplate.rewards.forEach((reward) => {
+        if (reward.name === 'gold') user.gold += reward.quantity;
+        if (reward.name === 'crystal') user.crystals += reward.quantity;
+      });
+      persist(async () => {
+        await db.update(usersTable)
+          .set({ gold: user.gold, crystals: user.crystals, updatedAt: now() })
+          .where(eq(usersTable.id, userId));
+      });
+      return { questId, rewards: weeklyTemplate.rewards, gold: user.gold, crystals: user.crystals };
+    }
 
-    persist(async () => {
-      await db.update(usersTable)
-        .set({
-          gold: user.gold,
-          crystals: user.crystals,
-          updatedAt: now(),
-        })
-        .where(eq(usersTable.id, userId));
-    });
+    // Try achievement
+    const ach = ensureUserAchievements(userId).get(questId);
+    const achTemplate = achievementTemplates.find((q) => q.id === questId);
+    if (ach && achTemplate) {
+      if (!ach.is_completed || ach.is_claimed) return null;
+      ach.is_claimed = true;
+      achTemplate.rewards.forEach((reward) => {
+        if (reward.name === 'gold') user.gold += reward.quantity;
+        if (reward.name === 'crystal') user.crystals += reward.quantity;
+      });
+      persist(async () => {
+        await db.update(usersTable)
+          .set({ gold: user.gold, crystals: user.crystals, updatedAt: now() })
+          .where(eq(usersTable.id, userId));
+      });
+      return { questId, rewards: achTemplate.rewards, gold: user.gold, crystals: user.crystals };
+    }
 
-    return {
-      questId,
-      rewards: template.rewards,
-    };
+    return null;
+  },
+
+  // Weekly quests
+  getWeeklyQuests(userId: number): Array<Record<string, unknown>> {
+    const weekly = ensureUserWeeklyQuests(userId);
+    return weeklyQuestTemplates.map((template) => {
+      const progress = weekly.get(template.id)!;
+      return {
+        id: template.id,
+        type: template.type,
+        title: template.title,
+        description: template.description,
+        progress: progress.progress,
+        goal: template.goal,
+        rewards: template.rewards,
+        isCompleted: progress.is_completed,
+        isClaimed: progress.is_claimed,
+      };
+    });
+  },
+
+  // Achievements
+  getAchievements(userId: number): Array<Record<string, unknown>> {
+    const ach = ensureUserAchievements(userId);
+    return achievementTemplates.map((template) => {
+      const progress = ach.get(template.id)!;
+      return {
+        id: template.id,
+        type: template.type,
+        title: template.title,
+        description: template.description,
+        progress: progress.progress,
+        goal: template.goal,
+        rewards: template.rewards,
+        isCompleted: progress.is_completed,
+        isClaimed: progress.is_claimed,
+      };
+    });
+  },
+
+  // User items (shards, materials)
+  getUserItems(userId: number): Array<Record<string, unknown>> {
+    const items = userItemsMap.get(userId);
+    if (!items) return [];
+    return Array.from(items.values()).filter((item) => item.quantity > 0).map((item) => ({
+      id: item.id,
+      item_type: item.item_type,
+      item_id: item.item_id,
+      item_name: item.item_name,
+      quantity: item.quantity,
+      updated_at: item.updated_at,
+    }));
+  },
+
+  // Arena defense team
+  getArenaDefenseTeam(userId: number): number[] {
+    return arenaDefenseTeam.get(userId) || [];
+  },
+
+  setArenaDefenseTeam(userId: number, characterIds: number[]): number[] {
+    const team = [...new Set(characterIds)].slice(0, 4);
+    arenaDefenseTeam.set(userId, team);
+    return team;
   },
 
   // ============================================================
   // Daily login
   // ============================================================
+  getDailyLoginStatus(userId: number): { claimedToday: boolean; consecutiveDays: number; nextRewards: Array<{ type: string; name: string; quantity: number }> } {
+    const today = todayKey();
+    const loginData = dailyLogin.get(userId);
+    const consecutiveDays = loginData?.consecutive_days ?? 0;
+    const claimedToday = loginData?.last_login_date === today && (loginData?.claimed_today ?? false);
+    const day = claimedToday ? consecutiveDays : consecutiveDays + 1;
+    const nextRewards: Array<{ type: string; name: string; quantity: number }> = [];
+    nextRewards.push({ type: 'currency', name: 'gold', quantity: 1000 + Math.max(0, day - 1) * 200 });
+    if (day >= 3) nextRewards.push({ type: 'currency', name: 'crystal', quantity: 20 + Math.max(0, day - 3) * 10 });
+    if (day >= 7) nextRewards.push({ type: 'currency', name: 'crystal', quantity: 50 });
+    return { claimedToday, consecutiveDays, nextRewards };
+  },
+
   claimDailyLogin(userId: number): { claimed: boolean; rewards: Array<{ type: string; name: string; quantity: number }>; consecutiveDays: number } {
     const user = this.getUserById(userId);
     if (!user) return { claimed: false, rewards: [], consecutiveDays: 0 };
@@ -2146,6 +2685,18 @@ export const dataStore = {
 
     // Advance login quest
     advanceQuestProgress(userId, 'login');
+    // Check login streak achievement
+    advanceCumulativeStat(userId, 'login_streak', 0);
+    // Manually set login_streak to consecutive_days for achievement check
+    ensureUserStats(userId).set('login_streak', loginData.consecutive_days);
+    // Re-eval achievements for login_streak
+    const ach = ensureUserAchievements(userId);
+    achievementTemplates.filter((t) => t.condition === 'login_streak').forEach((template) => {
+      const progress = ach.get(template.id);
+      if (!progress || progress.is_completed) return;
+      progress.progress = Math.min(loginData.consecutive_days, template.goal);
+      if (progress.progress >= template.goal) progress.is_completed = true;
+    });
 
     persist(async () => {
       await db.update(usersTable)

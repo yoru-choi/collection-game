@@ -14,33 +14,21 @@ export function addSceneFrame(
   const width = scene.cameras.main.width;
   const height = scene.cameras.main.height;
   const inset = options.inset ?? 12;
-  const radius = options.radius ?? 18;
-  const alpha = options.alpha ?? 0.85;
+  const radius = options.radius ?? 20;
+  const alpha = options.alpha ?? 0.4;
 
   const container = scene.add.container(0, 0);
 
+  // Single soft border (simplified from double border + corner plates)
   const border = scene.add.graphics();
-  border.lineStyle(4, COLORS.GOLD, alpha);
+  border.lineStyle(2, COLORS.GOLD, alpha);
   border.strokeRoundedRect(inset, inset, width - inset * 2, height - inset * 2, radius);
-  border.lineStyle(1, COLORS.LIGHT, 0.35);
-  border.strokeRoundedRect(inset + 4, inset + 4, width - (inset + 4) * 2, height - (inset + 4) * 2, radius - 4);
 
-  const corner = scene.add.graphics();
-  corner.fillStyle(COLORS.DARKER, 0.55);
-  const plateSize = 46;
-  const offset = inset + 8;
-  corner.fillRoundedRect(offset, offset, plateSize, plateSize, 10);
-  corner.fillRoundedRect(width - offset - plateSize, offset, plateSize, plateSize, 10);
-  corner.fillRoundedRect(offset, height - offset - plateSize, plateSize, plateSize, 10);
-  corner.fillRoundedRect(width - offset - plateSize, height - offset - plateSize, plateSize, plateSize, 10);
-  corner.lineStyle(2, COLORS.PRIMARY_LIGHT, 0.5);
-  corner.strokeRoundedRect(offset, offset, plateSize, plateSize, 10);
-  corner.strokeRoundedRect(width - offset - plateSize, offset, plateSize, plateSize, 10);
-  corner.strokeRoundedRect(offset, height - offset - plateSize, plateSize, plateSize, 10);
-  corner.strokeRoundedRect(width - offset - plateSize, height - offset - plateSize, plateSize, plateSize, 10);
-
-  container.add([border, corner]);
+  container.add([border]);
   container.setDepth(1000);
+
+  // Scene fade-in transition
+  scene.cameras.main.fadeIn(250, 0, 0, 0);
 
   return container;
 }

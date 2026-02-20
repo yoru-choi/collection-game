@@ -131,6 +131,79 @@ export class BootScene extends Phaser.Scene {
     graphics.generateTexture('ui-particle', 8, 8);
     graphics.clear();
 
+    // ── Home World Assets ─────────────────────────────────────
+    // Player character texture (44×44 — circle head + body silhouette)
+    graphics.fillStyle(0x4caf50, 1);
+    graphics.fillCircle(22, 10, 10); // head
+    graphics.fillRoundedRect(14, 18, 16, 20, 4); // body
+    graphics.fillTriangle(22, 14, 18, 40, 26, 40); // legs hint
+    graphics.generateTexture('player-char', 44, 44);
+    graphics.clear();
+
+    // Player direction arrow overlay (for facing indicator)
+    graphics.fillStyle(0xffee00, 1);
+    graphics.fillTriangle(10, 20, 0, 0, 20, 0);
+    graphics.generateTexture('player-arrow', 20, 20);
+    graphics.clear();
+
+    // Monster textures per grade (coloured circles with star-count indicator)
+    const gradeColors = [0x9e9e9e, 0x4caf50, 0x2196f3, 0x9c27b0, 0xff9800];
+    const gradeNames = ['1star', '2star', '3star', '4star', '5star'];
+    gradeColors.forEach((col, i) => {
+      graphics.fillStyle(col, 1);
+      graphics.fillCircle(20, 20, 18);
+      graphics.lineStyle(3, 0xffffff, 0.8);
+      graphics.strokeCircle(20, 20, 18);
+      graphics.generateTexture(`monster-${gradeNames[i]}`, 40, 40);
+      graphics.clear();
+    });
+
+    // Interactive zone textures
+    const zones = [
+      { key: 'zone-dungeon', color: 0xb71c1c, label: 'D' },
+      { key: 'zone-summon',  color: 0x6a1b9a, label: 'S' },
+      { key: 'zone-shop',    color: 0xe65100, label: '$' },
+      { key: 'zone-guild',   color: 0x1565c0, label: 'G' },
+    ];
+    zones.forEach(({ key, color }) => {
+      graphics.fillStyle(color, 0.85);
+      graphics.fillCircle(40, 40, 38);
+      graphics.lineStyle(4, 0xffffff, 0.7);
+      graphics.strokeCircle(40, 40, 38);
+      graphics.generateTexture(key, 80, 80);
+      graphics.clear();
+    });
+
+    // Home world background tile texture (64×64 grass-like pattern)
+    graphics.fillStyle(0x2d5a1b, 1);
+    graphics.fillRect(0, 0, 64, 64);
+    graphics.fillStyle(0x3d6e27, 0.4);
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        if ((r + c) % 2 === 0) {
+          graphics.fillRect(c * 16, r * 16, 16, 16);
+        }
+      }
+    }
+    graphics.generateTexture('tile-grass', 64, 64);
+    graphics.clear();
+
+    // Path tile texture
+    graphics.fillStyle(0x8d6e63, 1);
+    graphics.fillRect(0, 0, 64, 64);
+    graphics.fillStyle(0x795548, 0.5);
+    graphics.fillRect(4, 4, 56, 56);
+    graphics.generateTexture('tile-path', 64, 64);
+    graphics.clear();
+
+    // Obstacle/wall texture
+    graphics.fillStyle(0x546e7a, 1);
+    graphics.fillRect(0, 0, 64, 64);
+    graphics.lineStyle(2, 0x78909c, 1);
+    graphics.strokeRect(0, 0, 64, 64);
+    graphics.generateTexture('tile-wall', 64, 64);
+    graphics.clear();
+
     graphics.destroy();
   }
 
@@ -161,11 +234,10 @@ export class BootScene extends Phaser.Scene {
     
     // Check if user is already logged in
     if (this.authService.isAuthenticated()) {
-      // User is logged in, go to lobby
-      console.log('User authenticated, starting lobby...');
+      console.log('User authenticated, starting home world...');
       statusText.setText('Starting game...');
       this.time.delayedCall(500, () => {
-        this.scene.start(SCENE_KEYS.LOBBY);
+        this.scene.start(SCENE_KEYS.HOME);
       });
     } else {
       // User is not logged in, go to login screen

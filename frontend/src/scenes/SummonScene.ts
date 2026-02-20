@@ -13,6 +13,7 @@ export class SummonScene extends Phaser.Scene {
   private summonedCharacters: UserCharacter[] = [];
   private isAnimating: boolean = false;
   private currencyText?: Phaser.GameObjects.Text;
+  private resultOverlayObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super({ key: SCENE_KEYS.SUMMON });
@@ -31,46 +32,22 @@ export class SummonScene extends Phaser.Scene {
     // Background with magical effect
     this.createBackground(width, height);
 
-    // Title with glow
-    const titleGlow = this.add.graphics();
-    titleGlow.fillStyle(COLORS.PRIMARY_LIGHT, 0.3);
-    titleGlow.fillCircle(width / 2, 60, 120);
-    
+    // Title
     const title = this.add.text(width / 2, 60, '✨ Summon Portal ✨', {
       fontFamily: UI.FONTS.TITLE,
       fontSize: '48px',
       color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
       shadow: {
-        offsetX: 3,
-        offsetY: 3,
+        offsetX: 2,
+        offsetY: 2,
         color: this.colorToCss(COLORS.PRIMARY_DARK),
-        blur: 10,
+        blur: 4,
         stroke: true,
         fill: true,
       },
     });
     title.setOrigin(0.5);
-    
-    // Title pulse animation
-    this.tweens.add({
-      targets: title,
-      scaleX: 1.05,
-      scaleY: 1.05,
-      duration: 1500,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
-    
-    // Rotating glow effect
-    this.tweens.add({
-      targets: titleGlow,
-      alpha: 0.5,
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-    });
 
     // Currency display
     this.createCurrencyDisplay(width);
@@ -98,91 +75,39 @@ export class SummonScene extends Phaser.Scene {
     
     // Overlay gradient for depth
     const overlay = this.add.graphics();
-    overlay.fillGradientStyle(COLORS.PRIMARY, COLORS.PRIMARY, COLORS.SECONDARY_DARK, COLORS.SECONDARY_DARK, 0.3);
+    overlay.fillGradientStyle(COLORS.PRIMARY, COLORS.PRIMARY, COLORS.SECONDARY_DARK, COLORS.SECONDARY_DARK, 0.15);
     overlay.fillRect(0, 0, width, height);
-
-    // Magical particles - stars
-    const starParticles = this.add.particles(0, 0, 'ui-particle', {
-      x: { min: 0, max: width },
-      y: { min: 0, max: height },
-      speed: { min: 20, max: 50 },
-      scale: { start: 0.7, end: 0 },
-      alpha: { start: 0.5, end: 0 },
-      blendMode: 'ADD',
-      lifespan: 3000,
-      frequency: 450,
-      tint: [COLORS.PRIMARY_LIGHT, COLORS.SECONDARY_LIGHT, COLORS.GOLD],
-    });
-    
-    // Floating orbs
-    const orbParticles = this.add.particles(0, 0, 'ui-particle', {
-      x: { min: 0, max: width },
-      y: height + 50,
-      speedY: { min: -80, max: -120 },
-      speedX: { min: -20, max: 20 },
-      scale: { start: 0.9, end: 0 },
-      alpha: { start: 0.45, end: 0 },
-      blendMode: 'ADD',
-      lifespan: 4000,
-      frequency: 700,
-      tint: [COLORS.PRIMARY, COLORS.SECONDARY, 0xa855f7],
-    });
   }
 
   private createCurrencyDisplay(width: number): void {
     const crystal = this.gameData.getPlayerData()?.crystals || 0;
 
-    // Shadow
-    const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.4);
-    shadow.fillRoundedRect(width - 194, 16, 180, 50, 12);
-
-    // Background with glassmorphism
+    // Background
     const currencyBg = this.add.graphics();
     currencyBg.fillStyle(COLORS.PRIMARY_DARK, 0.9);
     currencyBg.fillRoundedRect(width - 200, 10, 180, 50, 12);
-    
-    // Border with glow
     currencyBg.lineStyle(2, COLORS.PRIMARY_LIGHT, 0.8);
     currencyBg.strokeRoundedRect(width - 200, 10, 180, 50, 12);
-    
-    // Inner highlight
-    currencyBg.fillStyle(COLORS.PRIMARY_LIGHT, 0.1);
-    currencyBg.fillRoundedRect(width - 195, 15, 170, 15, 8);
 
     this.currencyText = this.add.text(width - 110, 35, `💎 ${crystal}`, {
       fontFamily: UI.FONTS.UI,
       fontSize: '26px',
       color: this.colorToCss(COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
-      shadow: {
-        offsetX: 2,
-        offsetY: 2,
-        color: '#000000',
-        blur: 4,
-        fill: true,
-      },
     }).setOrigin(0.5);
-    
-    // Pulse animation
-    this.tweens.add({
-      targets: this.currencyText,
-      scaleX: 1.1,
-      scaleY: 1.1,
-      duration: 1000,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
   }
 
   private createSummonButtons(width: number, height: number): void {
-    const centerY = height / 2;
+    // 2x2 grid centered, button width reduced to 300px to avoid overlap
+    const leftCol = width / 4 + 40;   // ~360
+    const rightCol = 3 * width / 4 - 40; // ~920
+    const topRow = height / 2 - 50;
+    const bottomRow = height / 2 + 70;
 
     // Normal Summon
     this.createSummonButton(
-      width / 2 - 200,
-      centerY,
+      leftCol,
+      topRow,
       'Normal Summon',
       '100 💎',
       'Single',
@@ -192,8 +117,8 @@ export class SummonScene extends Phaser.Scene {
 
     // Normal Summon x10
     this.createSummonButton(
-      width / 2 - 200,
-      centerY + 120,
+      leftCol,
+      bottomRow,
       'Normal Summon x10',
       '1000 💎',
       '10+1 bonus',
@@ -203,19 +128,19 @@ export class SummonScene extends Phaser.Scene {
 
     // Premium Summon
     this.createSummonButton(
-      width / 2 + 200,
-      centerY,
+      rightCol,
+      topRow,
       'Premium Summon',
       '300 💎',
-      'Higher ⭐⭐⭐⭐⭐ Rate!',
+      'Higher ★★★★★ Rate!',
       COLORS.WARNING,
       () => this.performSummon('premium', 1)
     );
 
     // Premium Summon x10
     this.createSummonButton(
-      width / 2 + 200,
-      centerY + 120,
+      rightCol,
+      bottomRow,
       'Premium Summon x10',
       '3000 💎',
       '10+1 bonus',
@@ -237,8 +162,8 @@ export class SummonScene extends Phaser.Scene {
 
     // Shadow layer
     const shadow = this.add.graphics();
-    shadow.fillStyle(0x000000, 0.5);
-    shadow.fillRoundedRect(-178, -48, 356, 106, 15);
+    shadow.fillStyle(0x000000, 0.3);
+    shadow.fillRoundedRect(-153, -43, 306, 96, 16);
 
     // Button background with gradient
     const bg = this.add.graphics();
@@ -249,28 +174,11 @@ export class SummonScene extends Phaser.Scene {
       Phaser.Display.Color.ValueToColor(color).darken(40).color,
       1
     );
-    bg.fillRoundedRect(-175, -50, 350, 100, 12);
-    
-    // Border with glow
-    bg.lineStyle(3, COLORS.LIGHT, 0.8);
-    bg.strokeRoundedRect(-175, -50, 350, 100, 12);
-    
-    // Inner highlight
-    bg.fillStyle(0xffffff, 0.15);
-    bg.fillRoundedRect(-170, -45, 340, 25, 10);
+    bg.fillRoundedRect(-150, -45, 300, 90, 16);
 
-    // Sparkle particles
-    const sparkles = this.add.particles(0, 0, 'ui-particle', {
-      x: { min: -175, max: 175 },
-      y: { min: -50, max: 50 },
-      scale: { start: 0.7, end: 0 },
-      alpha: { start: 0.5, end: 0 },
-      blendMode: 'ADD',
-      lifespan: 1500,
-      frequency: 400,
-      tint: [COLORS.PRIMARY_LIGHT, COLORS.SECONDARY_LIGHT, COLORS.GOLD],
-    });
-    sparkles.setPosition(0, 0);
+    // Border
+    bg.lineStyle(2, COLORS.LIGHT, 0.6);
+    bg.strokeRoundedRect(-150, -45, 300, 90, 16);
 
     // Title
     const titleText = this.add.text(0, -28, title, {
@@ -313,19 +221,9 @@ export class SummonScene extends Phaser.Scene {
     });
     subtitleText.setOrigin(0.5);
 
-    button.add([shadow, bg, sparkles, titleText, costText, subtitleText]);
-    button.setSize(350, 100);
+    button.add([shadow, bg, titleText, costText, subtitleText]);
+    button.setSize(300, 90);
     button.setInteractive({ useHandCursor: true });
-
-    // Floating animation
-    this.tweens.add({
-      targets: button,
-      y: y - 5,
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
 
     // Hover effects
     button.on('pointerover', () => {
@@ -336,10 +234,7 @@ export class SummonScene extends Phaser.Scene {
         duration: 200,
         ease: 'Back.easeOut',
       });
-      
-      // Increase sparkle frequency
-      sparkles.setFrequency(200);
-      
+
       // Enhance glow
       bg.clear();
       bg.fillGradientStyle(
@@ -349,11 +244,9 @@ export class SummonScene extends Phaser.Scene {
         Phaser.Display.Color.ValueToColor(color).darken(20).color,
         1
       );
-      bg.fillRoundedRect(-175, -50, 350, 100, 12);
-      bg.lineStyle(4, COLORS.LIGHT, 1);
-      bg.strokeRoundedRect(-175, -50, 350, 100, 12);
-      bg.fillStyle(0xffffff, 0.25);
-      bg.fillRoundedRect(-170, -45, 340, 25, 10);
+      bg.fillRoundedRect(-150, -45, 300, 90, 16);
+      bg.lineStyle(3, COLORS.LIGHT, 1);
+      bg.strokeRoundedRect(-150, -45, 300, 90, 16);
     });
 
     button.on('pointerout', () => {
@@ -363,11 +256,8 @@ export class SummonScene extends Phaser.Scene {
         scaleY: 1,
         duration: 200,
       });
-      
-      // Reset sparkle frequency
-      sparkles.setFrequency(400);
-      
-      // Reset glow
+
+      // Reset
       bg.clear();
       bg.fillGradientStyle(
         color,
@@ -376,11 +266,9 @@ export class SummonScene extends Phaser.Scene {
         Phaser.Display.Color.ValueToColor(color).darken(40).color,
         1
       );
-      bg.fillRoundedRect(-175, -50, 350, 100, 12);
-      bg.lineStyle(3, COLORS.LIGHT, 0.8);
-      bg.strokeRoundedRect(-175, -50, 350, 100, 12);
-      bg.fillStyle(0xffffff, 0.15);
-      bg.fillRoundedRect(-170, -45, 340, 25, 10);
+      bg.fillRoundedRect(-150, -45, 300, 90, 16);
+      bg.lineStyle(2, COLORS.LIGHT, 0.6);
+      bg.strokeRoundedRect(-150, -45, 300, 90, 16);
     });
 
     button.on('pointerdown', () => {
@@ -420,28 +308,14 @@ export class SummonScene extends Phaser.Scene {
   }
 
   private createResultArea(width: number, height: number): void {
-    const panelX = width - 360;
-    const panelY = height / 2 + 20;
-      const panelWidth = 540;
-    const panelHeight = height - 180;
+    // Small hint area below the summon buttons
+    const panelX = width / 2;
+    const panelY = height - 50;
 
-    const panel = this.add.graphics();
-    panel.fillStyle(COLORS.DARKER, 0.9);
-    panel.fillRoundedRect(panelX - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 18);
-    panel.lineStyle(2, COLORS.GOLD, 0.7);
-    panel.strokeRoundedRect(panelX - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 18);
-
-    const header = this.add.graphics();
-    header.fillStyle(COLORS.BG_ACCENT, 0.6);
-    header.fillRoundedRect(panelX - panelWidth / 2 + 16, panelY - panelHeight / 2 + 16, panelWidth - 32, 50, 12);
-    header.lineStyle(1, COLORS.PRIMARY_LIGHT, 0.5);
-    header.strokeRoundedRect(panelX - panelWidth / 2 + 16, panelY - panelHeight / 2 + 16, panelWidth - 32, 50, 12);
-
-    this.add.text(panelX, panelY - panelHeight / 2 + 42, 'Summon Results', {
-      fontFamily: UI.FONTS.TITLE,
-      fontSize: '24px',
-      color: this.colorToCss(COLORS.TEXT_PRIMARY),
-      fontStyle: 'bold',
+    this.add.text(panelX, panelY, 'Summon results will appear in an overlay', {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '14px',
+      color: this.colorToCss(COLORS.TEXT_MUTED),
     }).setOrigin(0.5);
   }
 
@@ -506,10 +380,10 @@ export class SummonScene extends Phaser.Scene {
       currentAtk: character.baseAtk,
       currentDef: character.baseDef,
       currentSpd: character.baseSpd,
-      currentCrt: 5,
-      currentCrtDmg: 50,
-      currentAcc: 0,
-      currentRes: 0,
+      currentCrt: character.baseCrt ?? 15,
+      currentCrtDmg: character.baseCrtDmg ?? 50,
+      currentAcc: character.baseAcc ?? 0,
+      currentRes: character.baseRes ?? 0,
       skill1Level: 1,
       skill2Level: 1,
       skill3Level: 1,
@@ -560,18 +434,29 @@ export class SummonScene extends Phaser.Scene {
     });
   }
 
+  private cleanupResultOverlay(): void {
+    this.resultOverlayObjects.forEach((obj) => {
+      if (obj && !obj.scene) return;
+      obj.destroy();
+    });
+    this.resultOverlayObjects = [];
+  }
+
   private showSummonResults(): void {
+    this.cleanupResultOverlay();
+
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    // Dim background
-    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.8).setOrigin(0);
-    overlay.setInteractive();
+    // Dim background - blocks clicks behind
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.8).setOrigin(0).setDepth(50);
+    overlay.setInteractive(); // Block clicks through
+    this.resultOverlayObjects.push(overlay);
 
     // Result panel
     const panelWidth = Math.min(1000, width - 100);
     const panelHeight = 600;
-    const panel = this.add.graphics();
+    const panel = this.add.graphics().setDepth(51);
     panel.fillStyle(COLORS.DARK, 0.95);
     panel.fillRoundedRect(
       width / 2 - panelWidth / 2,
@@ -580,7 +465,11 @@ export class SummonScene extends Phaser.Scene {
       panelHeight,
       15
     );
-    panel.lineStyle(3, COLORS.PRIMARY);
+
+    // Grade-based border: if any 5-star → rainbow border, 4-star → gold
+    const maxGrade = Math.max(...this.summonedCharacters.map((c) => c.character.grade));
+    const borderColor = maxGrade >= 5 ? 0xff6600 : maxGrade >= 4 ? COLORS.PRIMARY : COLORS.SECONDARY;
+    panel.lineStyle(3, borderColor);
     panel.strokeRoundedRect(
       width / 2 - panelWidth / 2,
       height / 2 - panelHeight / 2,
@@ -588,14 +477,17 @@ export class SummonScene extends Phaser.Scene {
       panelHeight,
       15
     );
+    this.resultOverlayObjects.push(panel);
 
     // Title
-    this.add.text(width / 2, height / 2 - 260, 'Summon Results!', {
+    const titleText = maxGrade >= 5 ? '🌈 Summon Results! 🌈' : maxGrade >= 4 ? '✨ Summon Results! ✨' : 'Summon Results!';
+    const titleObj = this.add.text(width / 2, height / 2 - 260, titleText, {
       fontFamily: UI.FONTS.TITLE,
       fontSize: '32px',
-      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      color: this.colorToCss(maxGrade >= 5 ? 0xff6600 : maxGrade >= 4 ? COLORS.PRIMARY : COLORS.TEXT_PRIMARY),
       fontStyle: 'bold',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(52);
+    this.resultOverlayObjects.push(titleObj);
 
     // Display characters
     const cardSize = 140;
@@ -608,11 +500,11 @@ export class SummonScene extends Phaser.Scene {
       const x = width / 2 - (cols * (cardSize + spacing)) / 2 + col * (cardSize + spacing) + cardSize / 2;
       const y = height / 2 - 150 + row * (cardSize + spacing);
 
-      this.createResultCard(x, y, cardSize, char);
+      this.createResultCard(x, y, cardSize, char, index);
     });
 
     // Close button
-    const closeBtn = this.add.container(width / 2, height / 2 + 250);
+    const closeBtn = this.add.container(width / 2, height / 2 + 250).setDepth(52);
     const closeBg = this.add.rectangle(0, 0, 200, 50, COLORS.SUCCESS);
     closeBg.setStrokeStyle(2, COLORS.LIGHT);
     const closeText = this.add.text(0, 0, 'Confirm', {
@@ -628,27 +520,43 @@ export class SummonScene extends Phaser.Scene {
     closeBtn.setInteractive({ useHandCursor: true });
 
     closeBtn.on('pointerdown', () => {
-      overlay.destroy();
-      panel.destroy();
-      closeBtn.destroy();
+      this.cleanupResultOverlay();
       this.summonedCharacters = [];
     });
+    this.resultOverlayObjects.push(closeBtn);
   }
 
-  private createResultCard(x: number, y: number, size: number, character: UserCharacter): void {
-    const card = this.add.container(x, y);
+  private createResultCard(x: number, y: number, size: number, character: UserCharacter, index: number = 0): void {
+    const card = this.add.container(x, y).setDepth(52);
+
+    const grade = character.character.grade;
+    const gradeColor = getGradeColor(grade);
+
+    // Glow for 4-star (gold) and 5-star (rainbow/orange)
+    if (grade >= 4) {
+      const glowColor = grade >= 5 ? 0xff6600 : COLORS.PRIMARY;
+      const glow = this.add.rectangle(0, 0, size + 8, size + 8, glowColor, 0.4);
+      card.add(glow);
+      this.tweens.add({
+        targets: glow,
+        alpha: 0.1,
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
 
     // Background
     const bg = this.add.rectangle(0, 0, size, size, COLORS.SECONDARY, 0.9);
-    bg.setStrokeStyle(3, getGradeColor(character.character.grade));
+    bg.setStrokeStyle(3, gradeColor);
 
-    // Character sprite with deterministic image
+    // Character sprite
     const spriteKey = getMonsterImageKey(character);
     const sprite = this.add.sprite(0, -20, spriteKey);
     sprite.setDisplaySize(size * 0.75, size * 0.75);
 
     // Stars
-    const stars = this.add.text(0, 40, getGradeStars(character.character.grade), {
+    const stars = this.add.text(0, 40, getGradeStars(grade), {
       fontSize: '14px',
     });
     stars.setOrigin(0.5);
@@ -665,13 +573,27 @@ export class SummonScene extends Phaser.Scene {
 
     card.add([bg, sprite, stars, name]);
 
-    // Entrance animation
+    // NEW badge
+    const newBadge = this.add.text(size / 2 - 8, -size / 2 + 4, 'NEW!', {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '11px',
+      color: '#ffffff',
+      backgroundColor: '#ff3333',
+      padding: { x: 4, y: 2 },
+      fontStyle: 'bold',
+    }).setOrigin(1, 0);
+    card.add(newBadge);
+
+    this.resultOverlayObjects.push(card);
+
+    // Staggered entrance animation
     card.setScale(0);
     this.tweens.add({
       targets: card,
       scaleX: 1,
       scaleY: 1,
       duration: 500,
+      delay: index * 80,
       ease: 'Back.easeOut',
     });
   }
