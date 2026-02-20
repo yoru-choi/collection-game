@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { and, asc, eq } from 'drizzle-orm';
 import { env } from '../config/env';
-import { Character, Dungeon, BattleState, User, UserCharacter } from '../types';
+import {
+  Character, Dungeon, BattleState, BattleUnit, User, UserCharacter,
+  SkillDefinition, DungeonWaveData, PurchaseRecord, UserQuestProgress, DailyLoginData,
+} from '../types';
 import { db } from '../db/client';
 import {
   characters as charactersTable,
@@ -17,44 +20,243 @@ import {
 } from '../db/schema';
 
 const now = (): string => new Date().toISOString();
+const todayKey = (): string => new Date().toISOString().slice(0, 10);
 
+// PRD 4.1: 성급별 최대 레벨
+const MAX_LEVEL_BY_GRADE: Record<number, number> = { 1: 15, 2: 25, 3: 35, 4: 45, 5: 60 };
+const getMaxLevel = (grade: number): number => MAX_LEVEL_BY_GRADE[grade] ?? 15;
+// PRD: 레벨업 비용 = 현재레벨 * 100 골드 / 경험치 크리스탈
+const getExpToNext = (level: number): number => level * 100;
+
+// ============================================================
+// Skill Definitions (MVP: 4 skills per character template)
+// ============================================================
+const skillDefinitions: SkillDefinition[] = [
+  // -- Fire Warrior (id 1) skills
+  { id: 101, name: 'Flame Strike', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 102, name: 'Blazing Slash', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'strong fire attack', effect_type: 'burn', effect_chance: 30, effect_duration: 2 },
+  { id: 103, name: 'Inferno Wave', skill_type: 'damage', target_type: 'all_enemies', multiplier: 2.75, max_cooldown: 3, effects: 'AoE fire damage', effect_type: 'burn', effect_chance: 50, effect_duration: 2 },
+  { id: 104, name: 'Dragon Rage', skill_type: 'damage', target_type: 'single', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate fire attack', effect_type: 'stun', effect_chance: 30, effect_duration: 1 },
+  // -- Wind Support (id 2) skills
+  { id: 201, name: 'Wind Bolt', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 202, name: 'Healing Breeze', skill_type: 'heal', target_type: 'all_allies', multiplier: 1.75, max_cooldown: 2, effects: 'heal all allies' },
+  { id: 203, name: 'Gale Shield', skill_type: 'buff', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'DEF buff to all allies', effect_type: 'def_up', effect_duration: 2, effect_value: 30 },
+  { id: 204, name: 'Storm of Renewal', skill_type: 'heal', target_type: 'all_allies', multiplier: 4.5, max_cooldown: 5, effects: 'massive heal all allies' },
+  // -- Water Archer (id 3) skills
+  { id: 301, name: 'Water Arrow', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 302, name: 'Tidal Shot', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'piercing water shot', effect_type: 'def_down', effect_chance: 50, effect_duration: 2, effect_value: 25 },
+  { id: 303, name: 'Frozen Rain', skill_type: 'damage', target_type: 'all_enemies', multiplier: 2.75, max_cooldown: 3, effects: 'AoE water damage', effect_type: 'spd_down', effect_chance: 50, effect_duration: 2, effect_value: 25 },
+  { id: 304, name: 'Tsunami Barrage', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'massive AoE water attack', effect_type: 'atk_down', effect_chance: 75, effect_duration: 2, effect_value: 25 },
+  // -- Light Tank (id 4) skills
+  { id: 401, name: 'Shield Bash', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 402, name: 'Holy Guard', skill_type: 'buff', target_type: 'self', multiplier: 1.75, max_cooldown: 2, effects: 'DEF up self', effect_type: 'def_up', effect_duration: 2, effect_value: 35 },
+  { id: 403, name: 'Divine Shield', skill_type: 'buff', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'shield all allies', effect_type: 'def_up', effect_duration: 2, effect_value: 30 },
+  { id: 404, name: 'Judgement', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'holy AoE damage' },
+  // -- Dark Mage (id 5) skills
+  { id: 501, name: 'Shadow Bolt', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 502, name: 'Dark Pulse', skill_type: 'debuff', target_type: 'all_enemies', multiplier: 1.75, max_cooldown: 2, effects: 'AoE dark damage', effect_type: 'atk_down', effect_chance: 50, effect_duration: 2, effect_value: 20 },
+  { id: 503, name: 'Void Burst', skill_type: 'damage', target_type: 'single', multiplier: 2.75, max_cooldown: 3, effects: 'strong dark attack', effect_type: 'def_down', effect_chance: 50, effect_duration: 2, effect_value: 25 },
+  { id: 504, name: 'Abyss Annihilation', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate dark AoE', effect_type: 'stun', effect_chance: 35, effect_duration: 1 },
+  // -- Water Healer (id 6) skills
+  { id: 601, name: 'Aqua Touch', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 602, name: 'Tidal Heal', skill_type: 'heal', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'heal single ally' },
+  { id: 603, name: 'Purifying Wave', skill_type: 'heal', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'heal all allies' },
+  { id: 604, name: 'Ocean Blessing', skill_type: 'heal', target_type: 'all_allies', multiplier: 4.5, max_cooldown: 5, effects: 'massive heal + DEF buff' },
+  // -- Fire Assassin (id 7) skills
+  { id: 701, name: 'Quick Slash', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 702, name: 'Flame Dagger', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'high crit fire attack', effect_type: 'burn', effect_chance: 50, effect_duration: 2 },
+  { id: 703, name: 'Blaze Rush', skill_type: 'damage', target_type: 'single', multiplier: 2.75, max_cooldown: 3, effects: 'fire combo attack', effect_type: 'burn', effect_chance: 75, effect_duration: 2 },
+  { id: 704, name: 'Infernal Execution', skill_type: 'damage', target_type: 'single', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate assassination', effect_type: 'burn', effect_chance: 100, effect_duration: 2 },
+  // -- Wind Mage (id 8) skills
+  { id: 801, name: 'Wind Blade', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 802, name: 'Cyclone', skill_type: 'damage', target_type: 'all_enemies', multiplier: 1.75, max_cooldown: 2, effects: 'wind AoE' },
+  { id: 803, name: 'Tornado', skill_type: 'damage', target_type: 'all_enemies', multiplier: 2.75, max_cooldown: 3, effects: 'stronger wind AoE', effect_type: 'spd_down', effect_chance: 50, effect_duration: 2, effect_value: 25 },
+  { id: 804, name: 'Tempest Fury', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate wind AoE', effect_type: 'spd_down', effect_chance: 75, effect_duration: 2, effect_value: 35 },
+  // -- Light Healer (id 9) skills
+  { id: 901, name: 'Holy Light', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 902, name: 'Heal', skill_type: 'heal', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'heal single' },
+  { id: 903, name: 'Mass Heal', skill_type: 'heal', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'heal all' },
+  { id: 904, name: 'Divine Resurrection', skill_type: 'heal', target_type: 'all_allies', multiplier: 4.5, max_cooldown: 5, effects: 'massive heal' },
+  // -- Dark Assassin (id 10) skills
+  { id: 1001, name: 'Shadow Strike', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1002, name: 'Venom Blade', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'poison attack', effect_type: 'poison', effect_chance: 75, effect_duration: 2 },
+  { id: 1003, name: 'Shadow Dance', skill_type: 'damage', target_type: 'single', multiplier: 2.75, max_cooldown: 3, effects: 'multi-hit dark attack', effect_type: 'poison', effect_chance: 50, effect_duration: 2 },
+  { id: 1004, name: 'Death Sentence', skill_type: 'damage', target_type: 'single', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate dark attack', effect_type: 'poison', effect_chance: 100, effect_duration: 3 },
+  // -- Water Tank (id 11) skills
+  { id: 1101, name: 'Tidal Slam', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1102, name: 'Ice Barrier', skill_type: 'buff', target_type: 'self', multiplier: 1.75, max_cooldown: 2, effects: 'DEF up self', effect_type: 'def_up', effect_duration: 2, effect_value: 35 },
+  { id: 1103, name: 'Frost Armor', skill_type: 'buff', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'DEF buff allies', effect_type: 'def_up', effect_duration: 2, effect_value: 30 },
+  { id: 1104, name: 'Glacial Fortress', skill_type: 'buff', target_type: 'all_allies', multiplier: 4.5, max_cooldown: 5, effects: 'massive DEF buff', effect_type: 'def_up', effect_duration: 3, effect_value: 50 },
+  // -- Fire Mage (id 12) skills
+  { id: 1201, name: 'Fire Bolt', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1202, name: 'Fireball', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'fire damage' },
+  { id: 1203, name: 'Meteor Storm', skill_type: 'damage', target_type: 'all_enemies', multiplier: 2.75, max_cooldown: 3, effects: 'AoE fire damage' },
+  { id: 1204, name: 'Hellfire', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate fire AoE' },
+  // -- Wind Warrior (id 13) skills
+  { id: 1301, name: 'Gale Slash', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1302, name: 'Storm Strike', skill_type: 'damage', target_type: 'single', multiplier: 1.75, max_cooldown: 2, effects: 'wind attack' },
+  { id: 1303, name: 'Whirlwind', skill_type: 'damage', target_type: 'all_enemies', multiplier: 2.75, max_cooldown: 3, effects: 'AoE wind damage' },
+  { id: 1304, name: 'Hurricane Blade', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate wind AoE' },
+  // -- Dark Tank (id 14) skills
+  { id: 1401, name: 'Dark Smash', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1402, name: 'Shadow Armor', skill_type: 'buff', target_type: 'self', multiplier: 1.75, max_cooldown: 2, effects: 'DEF up self', effect_type: 'def_up', effect_duration: 2, effect_value: 35 },
+  { id: 1403, name: 'Dark Pact', skill_type: 'buff', target_type: 'all_allies', multiplier: 2.75, max_cooldown: 3, effects: 'ATK buff allies', effect_type: 'atk_up', effect_duration: 2, effect_value: 30 },
+  { id: 1404, name: 'Abyssal Wall', skill_type: 'buff', target_type: 'all_allies', multiplier: 4.5, max_cooldown: 5, effects: 'massive DEF buff', effect_type: 'def_up', effect_duration: 3, effect_value: 50 },
+  // -- Light Mage (id 15) skills
+  { id: 1501, name: 'Light Beam', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'basic attack' },
+  { id: 1502, name: 'Radiance', skill_type: 'damage', target_type: 'all_enemies', multiplier: 1.75, max_cooldown: 2, effects: 'AoE light damage' },
+  { id: 1503, name: 'Solar Flare', skill_type: 'damage', target_type: 'single', multiplier: 2.75, max_cooldown: 3, effects: 'strong light attack' },
+  { id: 1504, name: 'Celestial Judgment', skill_type: 'damage', target_type: 'all_enemies', multiplier: 4.5, max_cooldown: 5, effects: 'ultimate light AoE' },
+  // -- Enemy skills
+  { id: 9001, name: 'Claw', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'enemy basic attack' },
+  { id: 9002, name: 'Bite', skill_type: 'damage', target_type: 'single', multiplier: 1.0, max_cooldown: 0, effects: 'enemy basic attack' },
+  { id: 9003, name: 'Slam', skill_type: 'damage', target_type: 'single', multiplier: 1.5, max_cooldown: 2, effects: 'enemy strong attack' },
+  { id: 9004, name: 'Roar', skill_type: 'buff', target_type: 'self', multiplier: 1.0, max_cooldown: 3, effects: 'ATK up', effect_type: 'atk_up', effect_duration: 2, effect_value: 30 },
+];
+
+// ============================================================
+// Character Seed Data (15 characters, 5 elements × various classes)
+// ============================================================
 const characters: Character[] = [
+  // -- 1-star (Common) ×3
   { id: 1, name: 'Novice Fighter', grade: 1, element: 'fire', class: 'warrior', base_hp: 850, base_atk: 120, base_def: 70, base_spd: 102, skill_1_id: 101, skill_2_id: 102, skill_3_id: 103, skill_4_id: 104, image_url: '/monsters/warrior_fire_1.png' },
+  { id: 6, name: 'Aqua Priest', grade: 1, element: 'water', class: 'healer', base_hp: 900, base_atk: 75, base_def: 80, base_spd: 96, skill_1_id: 601, skill_2_id: 602, skill_3_id: 603, skill_4_id: 604, image_url: '/monsters/healer_water_1.png' },
+  { id: 13, name: 'Wind Swordsman', grade: 1, element: 'wind', class: 'warrior', base_hp: 820, base_atk: 115, base_def: 72, base_spd: 108, skill_1_id: 1301, skill_2_id: 1302, skill_3_id: 1303, skill_4_id: 1304, image_url: '/monsters/warrior_wind_1.png' },
+
+  // -- 2-star (Uncommon) ×3
   { id: 2, name: 'Forest Healer', grade: 2, element: 'wind', class: 'support', base_hp: 980, base_atk: 80, base_def: 90, base_spd: 98, skill_1_id: 201, skill_2_id: 202, skill_3_id: 203, skill_4_id: 204, image_url: '/monsters/support_wind_1.png' },
   { id: 3, name: 'Water Archer', grade: 2, element: 'water', class: 'archer', base_hp: 760, base_atk: 150, base_def: 60, base_spd: 110, skill_1_id: 301, skill_2_id: 302, skill_3_id: 303, skill_4_id: 304, image_url: '/monsters/archer_water_1.png' },
+  { id: 11, name: 'Frost Guardian', grade: 2, element: 'water', class: 'tank', base_hp: 1200, base_atk: 85, base_def: 130, base_spd: 88, skill_1_id: 1101, skill_2_id: 1102, skill_3_id: 1103, skill_4_id: 1104, image_url: '/monsters/tank_water_1.png' },
+
+  // -- 3-star (Rare) ×3
   { id: 4, name: 'Light Knight', grade: 3, element: 'light', class: 'tank', base_hp: 1150, base_atk: 95, base_def: 140, base_spd: 95, skill_1_id: 401, skill_2_id: 402, skill_3_id: 403, skill_4_id: 404, image_url: '/monsters/tank_light_1.png' },
+  { id: 7, name: 'Flame Assassin', grade: 3, element: 'fire', class: 'assassin', base_hp: 720, base_atk: 170, base_def: 55, base_spd: 130, skill_1_id: 701, skill_2_id: 702, skill_3_id: 703, skill_4_id: 704, image_url: '/monsters/assassin_fire_1.png' },
+  { id: 8, name: 'Wind Sorceress', grade: 3, element: 'wind', class: 'mage', base_hp: 780, base_atk: 165, base_def: 60, base_spd: 105, skill_1_id: 801, skill_2_id: 802, skill_3_id: 803, skill_4_id: 804, image_url: '/monsters/mage_wind_1.png' },
+
+  // -- 4-star (Epic) ×3
   { id: 5, name: 'Dark Mage', grade: 4, element: 'dark', class: 'mage', base_hp: 790, base_atk: 180, base_def: 65, base_spd: 105, skill_1_id: 501, skill_2_id: 502, skill_3_id: 503, skill_4_id: 504, image_url: '/monsters/mage_dark_1.png' },
+  { id: 9, name: 'Holy Priestess', grade: 4, element: 'light', class: 'healer', base_hp: 1050, base_atk: 90, base_def: 100, base_spd: 100, skill_1_id: 901, skill_2_id: 902, skill_3_id: 903, skill_4_id: 904, image_url: '/monsters/healer_light_1.png' },
+  { id: 14, name: 'Shadow Sentinel', grade: 4, element: 'dark', class: 'tank', base_hp: 1300, base_atk: 100, base_def: 150, base_spd: 90, skill_1_id: 1401, skill_2_id: 1402, skill_3_id: 1403, skill_4_id: 1404, image_url: '/monsters/tank_dark_1.png' },
+
+  // -- 5-star (Legendary) ×3
+  { id: 10, name: 'Shadow Reaper', grade: 5, element: 'dark', class: 'assassin', base_hp: 820, base_atk: 210, base_def: 60, base_spd: 140, skill_1_id: 1001, skill_2_id: 1002, skill_3_id: 1003, skill_4_id: 1004, image_url: '/monsters/assassin_dark_1.png' },
+  { id: 12, name: 'Inferno Archmage', grade: 5, element: 'fire', class: 'mage', base_hp: 830, base_atk: 200, base_def: 60, base_spd: 108, skill_1_id: 1201, skill_2_id: 1202, skill_3_id: 1203, skill_4_id: 1204, image_url: '/monsters/mage_fire_1.png' },
+  { id: 15, name: 'Celestial Sage', grade: 5, element: 'light', class: 'mage', base_hp: 850, base_atk: 195, base_def: 70, base_spd: 112, skill_1_id: 1501, skill_2_id: 1502, skill_3_id: 1503, skill_4_id: 1504, image_url: '/monsters/mage_light_1.png' },
 ];
 
-const dungeons: Dungeon[] = [
-  {
-    id: 101,
-    name: 'Story 1-1: Forest Edge',
-    dungeon_type: 'story',
-    difficulty: 'normal',
-    chapter: 1,
-    stage: 1,
-    energy_cost: 6,
-    stages: [{ stage_number: 1, waves: 3 }],
-    rewards: [{ type: 'material', name: 'exp_crystal', amount: 1 }],
-    exp_reward: 100,
-    gold_reward: 1500,
-  },
-  {
-    id: 102,
-    name: 'Story 1-2: Ruin Gate',
-    dungeon_type: 'story',
-    difficulty: 'normal',
-    chapter: 1,
-    stage: 2,
-    energy_cost: 7,
-    stages: [{ stage_number: 1, waves: 3 }],
-    rewards: [{ type: 'material', name: 'exp_crystal', amount: 2 }],
-    exp_reward: 140,
-    gold_reward: 1800,
-  },
+// ============================================================
+// Element advantage helper
+// ============================================================
+const elementAdvantage: Record<string, string> = {
+  fire: 'wind', wind: 'water', water: 'fire', light: 'dark', dark: 'light',
+};
+
+const getElementBonus = (attackerElement: string, defenderElement: string): number => {
+  if (elementAdvantage[attackerElement] === defenderElement) return 1.5;
+  if (elementAdvantage[defenderElement] === attackerElement) return 0.75;
+  return 1.0;
+};
+
+// ============================================================
+// Dungeon wave generator helpers
+// ============================================================
+const makeWaveEnemies = (chapter: number, stage: number, difficulty: string, wave: number, count: number): DungeonWaveData['enemies'] => {
+  const diffMult = difficulty === 'hell' ? { hp: 4, atk: 2, def: 2 } : difficulty === 'hard' ? { hp: 2, atk: 1.5, def: 1.5 } : { hp: 1, atk: 1, def: 1 };
+  const baseLevel = (chapter - 1) * 5 + stage;
+  const elements = ['fire', 'water', 'wind', 'light', 'dark'];
+  const names = ['Goblin', 'Slime', 'Wolf', 'Golem', 'Shade', 'Skeleton', 'Bat', 'Spider'];
+
+  return Array.from({ length: count }, (_, i) => {
+    const elem = elements[(wave + i + chapter + stage) % elements.length];
+    const name = names[(wave * 3 + i + chapter) % names.length];
+    return {
+      char_id: 9000 + chapter * 100 + stage * 10 + wave * 4 + i,
+      name: `${name} Lv${baseLevel + wave}`,
+      element: elem,
+      level: baseLevel + wave,
+      hp: Math.round((400 + stage * 80 + wave * 60) * diffMult.hp),
+      atk: Math.round((70 + stage * 12 + wave * 8) * diffMult.atk),
+      def: Math.round((45 + stage * 8 + wave * 5) * diffMult.def),
+      spd: 85 + wave * 3 + stage * 2,
+    };
+  });
+};
+
+const makeWaveData = (chapter: number, stage: number, difficulty: string): DungeonWaveData[] => {
+  return [1, 2, 3, 4].map((wave) => ({
+    wave,
+    enemies: makeWaveEnemies(chapter, stage, difficulty, wave, wave < 4 ? 3 : 4),
+  }));
+};
+
+// ============================================================
+// Dungeon Seed Data (Chapter 1-2, Normal/Hard/Hell)
+// ============================================================
+type DungeonRewardRow = {
+  chapter: number; stage: number; difficulty: string;
+  energy: number; gold: number; crystal: number; shards: number;
+};
+
+const rewardTable: DungeonRewardRow[] = [
+  // Chapter 1 Normal
+  { chapter: 1, stage: 1, difficulty: 'normal', energy: 3, gold: 1500, crystal: 30, shards: 0 },
+  { chapter: 1, stage: 2, difficulty: 'normal', energy: 3, gold: 1700, crystal: 30, shards: 2 },
+  { chapter: 1, stage: 3, difficulty: 'normal', energy: 4, gold: 2000, crystal: 40, shards: 3 },
+  { chapter: 1, stage: 4, difficulty: 'normal', energy: 4, gold: 2300, crystal: 40, shards: 4 },
+  { chapter: 1, stage: 5, difficulty: 'normal', energy: 5, gold: 2600, crystal: 50, shards: 5 },
+  // Chapter 1 Hard
+  { chapter: 1, stage: 1, difficulty: 'hard', energy: 5, gold: 3500, crystal: 60, shards: 6 },
+  { chapter: 1, stage: 2, difficulty: 'hard', energy: 5, gold: 3800, crystal: 60, shards: 8 },
+  { chapter: 1, stage: 3, difficulty: 'hard', energy: 6, gold: 4200, crystal: 80, shards: 10 },
+  { chapter: 1, stage: 4, difficulty: 'hard', energy: 6, gold: 4600, crystal: 80, shards: 12 },
+  { chapter: 1, stage: 5, difficulty: 'hard', energy: 7, gold: 5200, crystal: 100, shards: 14 },
+  // Chapter 1 Hell
+  { chapter: 1, stage: 1, difficulty: 'hell', energy: 7, gold: 6500, crystal: 120, shards: 15 },
+  { chapter: 1, stage: 2, difficulty: 'hell', energy: 7, gold: 7000, crystal: 120, shards: 18 },
+  { chapter: 1, stage: 3, difficulty: 'hell', energy: 8, gold: 8000, crystal: 150, shards: 22 },
+  { chapter: 1, stage: 4, difficulty: 'hell', energy: 8, gold: 9000, crystal: 150, shards: 26 },
+  { chapter: 1, stage: 5, difficulty: 'hell', energy: 9, gold: 10000, crystal: 180, shards: 30 },
+  // Chapter 2 Normal
+  { chapter: 2, stage: 1, difficulty: 'normal', energy: 5, gold: 3000, crystal: 50, shards: 6 },
+  { chapter: 2, stage: 2, difficulty: 'normal', energy: 5, gold: 3300, crystal: 50, shards: 7 },
+  { chapter: 2, stage: 3, difficulty: 'normal', energy: 6, gold: 3600, crystal: 60, shards: 8 },
+  { chapter: 2, stage: 4, difficulty: 'normal', energy: 6, gold: 4000, crystal: 60, shards: 9 },
+  { chapter: 2, stage: 5, difficulty: 'normal', energy: 7, gold: 4500, crystal: 70, shards: 10 },
+  // Chapter 2 Hard
+  { chapter: 2, stage: 1, difficulty: 'hard', energy: 7, gold: 6000, crystal: 100, shards: 16 },
+  { chapter: 2, stage: 2, difficulty: 'hard', energy: 7, gold: 6500, crystal: 100, shards: 18 },
+  { chapter: 2, stage: 3, difficulty: 'hard', energy: 8, gold: 7200, crystal: 120, shards: 20 },
+  { chapter: 2, stage: 4, difficulty: 'hard', energy: 8, gold: 8000, crystal: 120, shards: 22 },
+  { chapter: 2, stage: 5, difficulty: 'hard', energy: 9, gold: 9000, crystal: 150, shards: 24 },
+  // Chapter 2 Hell
+  { chapter: 2, stage: 1, difficulty: 'hell', energy: 9, gold: 11000, crystal: 180, shards: 28 },
+  { chapter: 2, stage: 2, difficulty: 'hell', energy: 9, gold: 12000, crystal: 180, shards: 32 },
+  { chapter: 2, stage: 3, difficulty: 'hell', energy: 10, gold: 13500, crystal: 220, shards: 36 },
+  { chapter: 2, stage: 4, difficulty: 'hell', energy: 10, gold: 15000, crystal: 220, shards: 40 },
+  { chapter: 2, stage: 5, difficulty: 'hell', energy: 11, gold: 17000, crystal: 260, shards: 45 },
 ];
 
+let dungeonIdSeq = 101;
+const dungeons: Dungeon[] = rewardTable.map((row) => ({
+  id: dungeonIdSeq++,
+  name: `Story ${row.chapter}-${row.stage}: ${row.difficulty === 'normal' ? 'Normal' : row.difficulty === 'hard' ? 'Hard' : 'Hell'}`,
+  dungeon_type: 'story',
+  difficulty: row.difficulty,
+  chapter: row.chapter,
+  stage: row.stage,
+  energy_cost: row.energy,
+  stages: [{ stage_number: 1, waves: 4 }],
+  rewards: row.shards > 0 ? [{ type: 'material', name: 'character_shard', amount: row.shards }] : [],
+  exp_reward: Math.round(row.gold * 0.1),
+  gold_reward: row.gold,
+  crystal_reward: row.crystal,
+  character_shard_reward: row.shards,
+  wave_data: makeWaveData(row.chapter, row.stage, row.difficulty),
+}));
+
+// ============================================================
+// In-memory state
+// ============================================================
 const users = new Map<number, User>();
 const usersByUsername = new Map<string, number>();
 const usersByEmail = new Map<string, number>();
@@ -63,6 +265,18 @@ const userCharacters = new Map<number, UserCharacter[]>();
 const userParty = new Map<number, number[]>();
 const battles = new Map<number, BattleState>();
 const userGuild = new Map<number, number>();
+
+// Dungeon progress: userId → Set<dungeonId>
+const dungeonCleared = new Map<number, Set<number>>();
+
+// Shop purchase history: userId → Map<date, PurchaseRecord[]>
+const purchaseHistory = new Map<number, Map<string, PurchaseRecord[]>>();
+
+// Quest progress per user: userId → Map<questId, UserQuestProgress>
+const userQuestProgress = new Map<number, Map<number, UserQuestProgress>>();
+
+// Daily login: userId → DailyLoginData
+const dailyLogin = new Map<number, DailyLoginData>();
 
 let userIdSeq = 1;
 let userCharacterIdSeq = 1;
@@ -79,22 +293,39 @@ const guilds: Array<{
   createdAt: string;
 }> = [];
 
+// ============================================================
+// Shop Items (PRD aligned)
+// ============================================================
 const shopItems = [
-  { id: 1, name: 'Small Energy Potion', description: 'Recover 20 energy', item_type: 'energy', currency_type: 'gold', price: 1000, stock: 99 },
-  { id: 2, name: 'Summon Scroll', description: 'Normal summon x1', item_type: 'material', currency_type: 'crystal', price: 100, stock: 999 },
+  { id: 1, name: 'EXP Crystal (Small)', description: 'Grants 100 EXP to a character', item_type: 'material', currency_type: 'gold', price: 2000, stock: 5, daily_limit: 5 },
+  { id: 2, name: 'EXP Crystal (Medium)', description: 'Grants 500 EXP to a character', item_type: 'material', currency_type: 'gold', price: 5000, stock: 3, daily_limit: 3 },
+  { id: 3, name: 'Awakening Stone', description: 'Used to awaken characters', item_type: 'material', currency_type: 'gold', price: 3000, stock: 3, daily_limit: 3 },
+  { id: 4, name: 'Energy ×10', description: 'Recover 10 energy', item_type: 'energy', currency_type: 'gold', price: 1500, stock: 5, daily_limit: 5 },
+  { id: 5, name: 'Summon Scroll', description: 'Normal summon ×1', item_type: 'material', currency_type: 'crystal', price: 100, stock: 999, daily_limit: 999 },
 ];
 
-const dailyQuests = [
-  { id: 1, type: 'daily', title: '로그인 1회', description: '오늘 게임에 로그인하기', progress: 1, goal: 1, rewards: [{ type: 'currency', name: 'gold', quantity: 1000 }], isCompleted: true, isClaimed: false },
-  { id: 2, type: 'daily', title: '던전 1회 클리어', description: '스토리 던전 1회 완료', progress: 0, goal: 1, rewards: [{ type: 'currency', name: 'crystal', quantity: 30 }], isCompleted: false, isClaimed: false },
+// ============================================================
+// Daily Quest templates
+// ============================================================
+const dailyQuestTemplates = [
+  { id: 1, type: 'daily' as const, title: 'Daily Login', description: 'Log in today', condition: 'login', goal: 1, rewards: [{ type: 'currency', name: 'gold', quantity: 1000 }] },
+  { id: 2, type: 'daily' as const, title: 'Clear 3 Dungeons', description: 'Complete any dungeon 3 times', condition: 'dungeon_clear', goal: 3, rewards: [{ type: 'currency', name: 'crystal', quantity: 30 }] },
+  { id: 3, type: 'daily' as const, title: 'Summon 1 Time', description: 'Perform a summon', condition: 'summon', goal: 1, rewards: [{ type: 'currency', name: 'gold', quantity: 2000 }] },
+  { id: 4, type: 'daily' as const, title: 'Level Up a Character', description: 'Level up any character once', condition: 'level_up', goal: 1, rewards: [{ type: 'currency', name: 'crystal', quantity: 20 }] },
 ];
 
+// ============================================================
+// Persistence helper
+// ============================================================
 const persist = (task: () => Promise<void>): void => {
   void task().catch((error) => {
     console.error('[db-persist] failed:', error);
   });
 };
 
+// ============================================================
+// Energy regen
+// ============================================================
 const maybeRegenEnergy = (user: User): void => {
   if (user.energy >= user.maxEnergy) {
     return;
@@ -141,6 +372,9 @@ const maybeRegenEnergy = (user: User): void => {
   });
 };
 
+// ============================================================
+// DB mapping helpers
+// ============================================================
 const mapCharacterFromDb = (row: typeof charactersTable.$inferSelect): Character => ({
   id: row.id,
   name: row.name,
@@ -180,6 +414,9 @@ const mapUserCharacterFromDb = (row: typeof userCharactersTable.$inferSelect): U
   obtained_at: row.obtainedAt,
 });
 
+// ============================================================
+// DB hydration
+// ============================================================
 const hydrateFromDb = async (): Promise<void> => {
   try {
     const [dbUsers, dbCharacters, dbDungeons, dbUserChars, dbParty, dbGuilds, dbGuildMembers, dbShopItems, dbQuests] = await Promise.all([
@@ -296,25 +533,7 @@ const hydrateFromDb = async (): Promise<void> => {
         currency_type: row.currencyType,
         price: row.price,
         stock: row.stock,
-      })));
-    }
-
-    if (dbQuests.length > 0) {
-      dailyQuests.length = 0;
-      dailyQuests.push(...dbQuests.map((row) => ({
-        id: row.id,
-        type: 'daily',
-        title: row.name,
-        description: row.description || '',
-        progress: 0,
-        goal: row.conditionTarget,
-        rewards: Array.isArray(row.rewards) ? (row.rewards as Array<{ type: string; name?: string; amount?: number; quantity?: number }>).map((reward) => ({
-          type: reward.type,
-          name: reward.name || reward.type,
-          quantity: reward.quantity ?? reward.amount ?? 1,
-        })) : [],
-        isCompleted: false,
-        isClaimed: false,
+        daily_limit: row.stock,
       })));
     }
   } catch (error) {
@@ -322,6 +541,9 @@ const hydrateFromDb = async (): Promise<void> => {
   }
 };
 
+// ============================================================
+// User character factory
+// ============================================================
 const makeUserCharacter = (userId: number, character: Character): UserCharacter => ({
   id: userCharacterIdSeq++,
   user_id: userId,
@@ -344,7 +566,477 @@ const makeUserCharacter = (userId: number, character: Character): UserCharacter 
   obtained_at: now(),
 });
 
+// ============================================================
+// Quest progress helpers
+// ============================================================
+const ensureUserQuests = (userId: number): Map<number, UserQuestProgress> => {
+  let quests = userQuestProgress.get(userId);
+  if (!quests) {
+    quests = new Map();
+    userQuestProgress.set(userId, quests);
+  }
+  const today = todayKey();
+  // Reset if stale
+  dailyQuestTemplates.forEach((template) => {
+    const existing = quests!.get(template.id);
+    if (!existing || existing.reset_at !== today) {
+      quests!.set(template.id, {
+        quest_id: template.id,
+        progress: 0,
+        is_completed: false,
+        is_claimed: false,
+        reset_at: today,
+      });
+    }
+  });
+  return quests;
+};
+
+const advanceQuestProgress = (userId: number, condition: string, amount: number = 1): void => {
+  const quests = ensureUserQuests(userId);
+  dailyQuestTemplates.forEach((template) => {
+    if (template.condition !== condition) return;
+    const progress = quests.get(template.id);
+    if (!progress || progress.is_completed) return;
+    progress.progress = Math.min(progress.progress + amount, template.goal);
+    if (progress.progress >= template.goal) {
+      progress.is_completed = true;
+    }
+  });
+};
+
+// ============================================================
+// Battle ATB helpers
+// ============================================================
+const buildSkillsForUnit = (charBase: Character): BattleUnit['skills'] => {
+  const skillIds = [charBase.skill_1_id, charBase.skill_2_id, charBase.skill_3_id, charBase.skill_4_id];
+  return skillIds.map((skillId, idx) => {
+    const def = skillDefinitions.find((s) => s.id === skillId);
+    return {
+      skill_id: skillId,
+      slot_index: idx,
+      name: def?.name || 'Unknown',
+      skill_type: def?.skill_type || 'damage',
+      target_type: def?.target_type || 'single',
+      multiplier: def?.multiplier || 1,
+      max_cooldown: def?.max_cooldown || 0,
+      current_cd: 0,
+      effects: def?.effects || '',
+    };
+  });
+};
+
+const buildEnemySkills = (): BattleUnit['skills'] => {
+  return [{
+    skill_id: 9001,
+    slot_index: 0,
+    name: 'Claw',
+    skill_type: 'damage',
+    target_type: 'single',
+    multiplier: 1.0,
+    max_cooldown: 0,
+    current_cd: 0,
+    effects: 'enemy basic attack',
+  }, {
+    skill_id: 9003,
+    slot_index: 1,
+    name: 'Slam',
+    skill_type: 'damage',
+    target_type: 'single',
+    multiplier: 1.5,
+    max_cooldown: 2,
+    current_cd: 0,
+    effects: 'enemy strong attack',
+  }, {
+    skill_id: 9004,
+    slot_index: 2,
+    name: 'Roar',
+    skill_type: 'buff',
+    target_type: 'self',
+    multiplier: 1.0,
+    max_cooldown: 3,
+    current_cd: 0,
+    effects: 'ATK up',
+  }];
+};
+
+// ============================================================
+// Buff/Debuff stat helpers
+// ============================================================
+const BUFF_TYPES = new Set(['atk_up', 'def_up', 'spd_up', 'immunity', 'shield', 'invincible']);
+const STATUS_EFFECTS = new Set(['stun', 'poison', 'burn', 'freeze', 'sleep', 'silence']);
+
+const getEffectiveATK = (unit: BattleUnit): number => {
+  let mult = 1.0;
+  unit.buffs.forEach((b) => { if (b.effect_type === 'atk_up') mult += b.value / 100; });
+  unit.debuffs.forEach((d) => { if (d.effect_type === 'atk_down') mult -= d.value / 100; });
+  return Math.max(1, Math.round(unit.atk * Math.max(0.1, mult)));
+};
+
+const getEffectiveDEF = (unit: BattleUnit): number => {
+  let mult = 1.0;
+  unit.buffs.forEach((b) => { if (b.effect_type === 'def_up') mult += b.value / 100; });
+  unit.debuffs.forEach((d) => { if (d.effect_type === 'def_down') mult -= d.value / 100; });
+  return Math.max(0, Math.round(unit.def * Math.max(0, mult)));
+};
+
+const getEffectiveSPD = (unit: BattleUnit): number => {
+  let mult = 1.0;
+  unit.buffs.forEach((b) => { if (b.effect_type === 'spd_up') mult += b.value / 100; });
+  unit.debuffs.forEach((d) => { if (d.effect_type === 'spd_down') mult -= d.value / 100; });
+  return Math.max(10, Math.round(unit.spd * Math.max(0.1, mult)));
+};
+
+/** Try to apply an effect (buff or debuff) from skill to target unit.
+ *  Returns the effect_type if applied, null if missed/resisted. */
+const tryApplyEffect = (
+  actor: BattleUnit,
+  target: BattleUnit,
+  skillDef: SkillDefinition,
+): string | null => {
+  if (!skillDef.effect_type) return null;
+
+  const chance = skillDef.effect_chance ?? 100;
+  // Accuracy vs Resistance check
+  const finalChance = Math.min(100, Math.max(0, chance + actor.accuracy - target.resistance));
+  if (Math.random() * 100 >= finalChance) return null;
+
+  const duration = skillDef.effect_duration ?? 2;
+  const value = skillDef.effect_value ?? 0;
+  const isBuff = BUFF_TYPES.has(skillDef.effect_type);
+
+  const effect = {
+    effect_type: skillDef.effect_type,
+    value,
+    duration,
+    source_id: actor.unit_id,
+  };
+
+  if (isBuff) {
+    // Overwrite same type buff (refresh)
+    target.buffs = target.buffs.filter((b) => b.effect_type !== skillDef.effect_type);
+    target.buffs.push(effect);
+  } else {
+    // Check immunity
+    if (target.buffs.some((b) => b.effect_type === 'immunity')) return 'resisted';
+    // Overwrite same type debuff (refresh)
+    target.debuffs = target.debuffs.filter((d) => d.effect_type !== skillDef.effect_type);
+    target.debuffs.push(effect);
+  }
+
+  return skillDef.effect_type;
+};
+
+/** Decay buff/debuff durations and apply DOT. Returns true if unit should skip its turn. */
+const processStatusEffectsForUnit = (
+  unit: BattleUnit,
+  battle: BattleState,
+): boolean => {
+  let skipTurn = false;
+
+  // Process debuffs
+  for (let i = unit.debuffs.length - 1; i >= 0; i--) {
+    const d = unit.debuffs[i];
+
+    if (d.effect_type === 'stun' || d.effect_type === 'freeze') {
+      skipTurn = true;
+    } else if (d.effect_type === 'poison') {
+      const dotDmg = Math.max(1, Math.round(unit.max_hp * 0.05));
+      unit.hp = Math.max(0, unit.hp - dotDmg);
+      if (unit.hp <= 0) unit.is_alive = false;
+      battle.events.unshift({
+        turn_number: battle.turn_counter,
+        actor_id: d.source_id,
+        actor_name: 'Poison',
+        skill_name: 'Poison Damage',
+        skill_id: 0,
+        event_type: 'dot',
+        targets: [{ target_id: unit.unit_id, target_name: unit.name, damage: dotDmg, hp_after: unit.hp }],
+      });
+    } else if (d.effect_type === 'burn') {
+      const dotDmg = Math.max(1, Math.round(unit.max_hp * 0.03));
+      unit.hp = Math.max(0, unit.hp - dotDmg);
+      if (unit.hp <= 0) unit.is_alive = false;
+      battle.events.unshift({
+        turn_number: battle.turn_counter,
+        actor_id: d.source_id,
+        actor_name: 'Burn',
+        skill_name: 'Burn Damage',
+        skill_id: 0,
+        event_type: 'dot',
+        targets: [{ target_id: unit.unit_id, target_name: unit.name, damage: dotDmg, hp_after: unit.hp }],
+      });
+    }
+
+    d.duration -= 1;
+    if (d.duration <= 0) unit.debuffs.splice(i, 1);
+  }
+
+  // Decay buffs
+  for (let i = unit.buffs.length - 1; i >= 0; i--) {
+    unit.buffs[i].duration -= 1;
+    if (unit.buffs[i].duration <= 0) unit.buffs.splice(i, 1);
+  }
+
+  // Silence: can only use basic attack
+  if (unit.debuffs.some((d) => d.effect_type === 'silence')) {
+    // handled during pickAiAction by limiting to slot 0
+  }
+
+  return skipTurn;
+};
+
+const calculateDamage = (attacker: BattleUnit, defender: BattleUnit, skillMultiplier: number): { damage: number; isCrit: boolean } => {
+  const effATK = getEffectiveATK(attacker);
+  const effDEF = getEffectiveDEF(defender);
+  const isCrit = Math.random() * 100 < attacker.crit_rate;
+  const critMultiplier = isCrit ? 1 + attacker.crit_damage / 100 : 1;
+  const elemBonus = getElementBonus(attacker.element, defender.element);
+  const rawDamage = effATK * skillMultiplier * elemBonus * critMultiplier - effDEF * 0.35;
+  const damage = Math.max(1, Math.round(rawDamage));
+  return { damage, isCrit };
+};
+
+const pickAiAction = (unit: BattleUnit, aliveEnemies: BattleUnit[], aliveAllies: BattleUnit[]): { skillIdx: number; targets: BattleUnit[] } => {
+  const isSilenced = unit.debuffs.some((d) => d.effect_type === 'silence');
+  const maxSkill = isSilenced ? 0 : unit.skills.length - 1;
+
+  // Try to use highest available skill first
+  for (let i = maxSkill; i >= 1; i--) {
+    const skill = unit.skills[i];
+    if (skill && skill.current_cd === 0) {
+      if (skill.target_type === 'all_enemies') return { skillIdx: i, targets: aliveEnemies };
+      if (skill.target_type === 'all_allies' || skill.target_type === 'self') return { skillIdx: i, targets: aliveAllies };
+      // single target - pick lowest HP enemy
+      const target = [...aliveEnemies].sort((a, b) => a.hp - b.hp)[0];
+      return { skillIdx: i, targets: target ? [target] : aliveEnemies.slice(0, 1) };
+    }
+  }
+  // Fallback to basic attack
+  const target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+  return { skillIdx: 0, targets: target ? [target] : [] };
+};
+
+const tickCooldowns = (unit: BattleUnit): void => {
+  unit.skills.forEach((skill) => {
+    if (skill.current_cd > 0) skill.current_cd -= 1;
+  });
+};
+
+const executeAction = (
+  battle: BattleState,
+  actor: BattleUnit,
+  skillIdx: number,
+  targetUnits: BattleUnit[],
+): void => {
+  const skill = actor.skills[skillIdx] || actor.skills[0];
+  const multiplier = skill.multiplier;
+  const skillDef = skillDefinitions.find((s) => s.id === skill.skill_id);
+
+  // Set cooldown
+  if (skill.max_cooldown > 0) {
+    skill.current_cd = skill.max_cooldown;
+  }
+
+  // Tick cooldowns for this unit's turn
+  tickCooldowns(actor);
+
+  const eventTargets: BattleState['events'][0]['targets'] = [];
+
+  if (skill.skill_type === 'heal') {
+    // Healing
+    const healTargets = skill.target_type === 'self' ? [actor] : targetUnits;
+    healTargets.forEach((target) => {
+      if (!target.is_alive) return;
+      const healAmount = Math.round(getEffectiveATK(actor) * multiplier * 0.8);
+      target.hp = Math.min(target.max_hp, target.hp + healAmount);
+      eventTargets.push({
+        target_id: target.unit_id,
+        target_name: target.name,
+        heal: healAmount,
+        hp_after: target.hp,
+      });
+    });
+  } else if (skill.skill_type === 'buff') {
+    // Buff skill: apply effect + minor HP restore as visual feedback
+    const buffTargets = skill.target_type === 'self' ? [actor] : targetUnits;
+    buffTargets.forEach((target) => {
+      if (!target.is_alive) return;
+      const applied: string[] = [];
+      if (skillDef?.effect_type) {
+        const result = tryApplyEffect(actor, target, skillDef);
+        if (result && result !== 'resisted') applied.push(result);
+      }
+      eventTargets.push({
+        target_id: target.unit_id,
+        target_name: target.name,
+        hp_after: target.hp,
+        applied,
+      });
+    });
+  } else if (skill.skill_type === 'debuff') {
+    // Debuff skill: no damage, just apply debuffs
+    targetUnits.forEach((target) => {
+      if (!target.is_alive) return;
+      const applied: string[] = [];
+      const resisted: string[] = [];
+      if (skillDef?.effect_type) {
+        const result = tryApplyEffect(actor, target, skillDef);
+        if (result === 'resisted') resisted.push(skillDef.effect_type);
+        else if (result) applied.push(result);
+      }
+      eventTargets.push({
+        target_id: target.unit_id,
+        target_name: target.name,
+        hp_after: target.hp,
+        applied,
+        resisted,
+      });
+    });
+  } else {
+    // Damage
+    targetUnits.forEach((target) => {
+      if (!target.is_alive) return;
+      const { damage, isCrit } = calculateDamage(actor, target, multiplier);
+      target.hp = Math.max(0, target.hp - damage);
+      const isKill = target.hp <= 0;
+      if (isKill) target.is_alive = false;
+
+      // Side-effect application (e.g., burn on hit, poison on hit)
+      const applied: string[] = [];
+      const resisted: string[] = [];
+      if (skillDef?.effect_type && !isKill) {
+        const result = tryApplyEffect(actor, target, skillDef);
+        if (result === 'resisted') resisted.push(skillDef.effect_type);
+        else if (result) applied.push(result);
+      }
+
+      eventTargets.push({
+        target_id: target.unit_id,
+        target_name: target.name,
+        damage,
+        is_crit: isCrit,
+        is_kill: isKill,
+        hp_after: target.hp,
+        applied: applied.length > 0 ? applied : undefined,
+        resisted: resisted.length > 0 ? resisted : undefined,
+      });
+    });
+  }
+
+  battle.turn_counter += 1;
+  battle.events.unshift({
+    turn_number: battle.turn_counter,
+    actor_id: actor.unit_id,
+    actor_name: actor.name,
+    skill_name: skill.name,
+    skill_id: skill.skill_id,
+    event_type: 'action',
+    targets: eventTargets,
+  });
+
+  // Keep events list manageable
+  if (battle.events.length > 30) battle.events.length = 30;
+
+  // Reset ATB
+  actor.atb_gauge = 0;
+};
+
+const advanceBattleTick = (battle: BattleState, ticks: number = 1): void => {
+  const allUnits = [...battle.allies, ...battle.enemies];
+
+  for (let t = 0; t < ticks; t++) {
+    // Increase ATB for alive units using effective SPD
+    allUnits.forEach((unit) => {
+      if (!unit.is_alive) return;
+      const effSpd = getEffectiveSPD(unit);
+      unit.atb_gauge += (effSpd / 100) * battle.speed_multiplier;
+    });
+
+    // Process units that reached 100 ATB
+    const readyUnits = allUnits
+      .filter((u) => u.is_alive && u.atb_gauge >= 100)
+      .sort((a, b) => getEffectiveSPD(b) - getEffectiveSPD(a));
+
+    for (const unit of readyUnits) {
+      if (!unit.is_alive) continue;
+
+      // Process status effects at the start of this unit's turn
+      const skipTurn = processStatusEffectsForUnit(unit, battle);
+
+      // Check if unit died from DOT
+      if (!unit.is_alive) {
+        if (!battle.enemies.some((e) => e.is_alive)) {
+          if (battle.current_wave < battle.total_waves) {
+            battle.phase = 'wave_clear';
+            battle.current_wave += 1;
+          } else {
+            battle.phase = 'battle_end';
+          }
+          return;
+        }
+        if (!battle.allies.some((a) => a.is_alive)) {
+          battle.phase = 'battle_end';
+          return;
+        }
+        continue;
+      }
+
+      if (skipTurn) {
+        // Stunned: reset ATB and continue
+        unit.atb_gauge = 0;
+        continue;
+      }
+
+      const isAlly = unit.team === 'ally';
+      const aliveEnemies = battle.enemies.filter((e) => e.is_alive);
+      const aliveAllies = battle.allies.filter((a) => a.is_alive);
+
+      // If manual mode and ally turn, pause for action select
+      if (isAlly && !battle.auto_mode) {
+        battle.phase = 'action_select';
+        battle.active_unit_id = unit.unit_id;
+        return;
+      }
+
+      // AI action (auto mode or enemy)
+      const opponents = isAlly ? aliveEnemies : aliveAllies;
+      const friendlies = isAlly ? aliveAllies : aliveEnemies;
+
+      if (opponents.length === 0) break;
+
+      const { skillIdx, targets } = pickAiAction(unit, opponents, friendlies);
+      executeAction(battle, unit, skillIdx, targets);
+
+      // Check wave clear
+      if (!battle.enemies.some((e) => e.is_alive)) {
+        if (battle.current_wave < battle.total_waves) {
+          battle.phase = 'wave_clear';
+          battle.current_wave += 1;
+          return;
+        }
+        // Victory
+        battle.phase = 'battle_end';
+        return;
+      }
+
+      // Check defeat
+      if (!battle.allies.some((a) => a.is_alive)) {
+        battle.phase = 'battle_end';
+        return;
+      }
+    }
+  }
+};
+
+// ============================================================
+// Data Store
+// ============================================================
 export const dataStore = {
+  getSkillDefinition(skillId: number): SkillDefinition | undefined {
+    return skillDefinitions.find((s) => s.id === skillId);
+  },
+
   getCharacterById(characterId: number): Character | undefined {
     return characters.find((character) => character.id === characterId);
   },
@@ -378,6 +1070,10 @@ export const dataStore = {
     const starterCharacters = [1, 2, 3, 4].map((characterId) => this.getCharacterById(characterId)!).map((character) => makeUserCharacter(id, character));
     userCharacters.set(id, starterCharacters);
     userParty.set(id, starterCharacters.map((entry) => entry.id).slice(0, 4));
+
+    // Initialize quest progress with login quest auto-completed
+    ensureUserQuests(id);
+    advanceQuestProgress(id, 'login');
 
     persist(async () => {
       await db.insert(usersTable).values({
@@ -536,23 +1232,55 @@ export const dataStore = {
       skill_3_id: base.skill_3_id,
       skill_4_id: base.skill_4_id,
       image_url: base.image_url,
+      max_level: getMaxLevel(base.grade),
+      exp_to_next: getExpToNext(entry.level),
     };
   },
 
   levelUpCharacter(userId: number, userCharacterId: number, expCrystals = 1): Record<string, unknown> | null {
+    const user = this.getUserById(userId);
+    if (!user) return null;
+
     const entry = this.getUserCharacters(userId).find((character) => character.id === userCharacterId);
     if (!entry) {
       return null;
     }
 
+    const base = this.getCharacterById(entry.character_id);
+    if (!base) return null;
+
+    const maxLevel = getMaxLevel(base.grade);
+
+    // 최대 레벨 도달 시 레벨업 불가
+    if (entry.level >= maxLevel) {
+      return null;
+    }
+
+    // Cost check: level * 100 gold per crystal
+    const goldCost = entry.level * 100 * Math.max(1, expCrystals);
+    if (user.gold < goldCost) {
+      return null;
+    }
+    user.gold -= goldCost;
+
+    const prevLevel = entry.level;
     entry.exp += Math.max(1, expCrystals) * 100;
-    while (entry.exp >= entry.level * 100) {
-      entry.exp -= entry.level * 100;
+    while (entry.exp >= getExpToNext(entry.level) && entry.level < maxLevel) {
+      entry.exp -= getExpToNext(entry.level);
       entry.level += 1;
       entry.current_hp += 30;
       entry.current_atk += 5;
       entry.current_def += 4;
       entry.current_spd += 1;
+    }
+
+    // 최대 레벨 도달 시 잉여 exp 초기화
+    if (entry.level >= maxLevel) {
+      entry.exp = 0;
+    }
+
+    if (entry.level > prevLevel) {
+      advanceQuestProgress(userId, 'level_up');
     }
 
     persist(async () => {
@@ -566,31 +1294,72 @@ export const dataStore = {
           currentSpd: entry.current_spd,
         })
         .where(eq(userCharactersTable.id, userCharacterId));
+      await db.update(usersTable)
+        .set({ gold: user.gold, updatedAt: now() })
+        .where(eq(usersTable.id, userId));
     });
 
     return this.getUserCharacterDetail(userId, userCharacterId);
   },
 
   awakenCharacter(userId: number, userCharacterId: number): Record<string, unknown> | null {
+    const user = this.getUserById(userId);
+    if (!user) return null;
+
     const entry = this.getUserCharacters(userId).find((character) => character.id === userCharacterId);
     if (!entry) {
       return null;
     }
 
-    entry.awakened = true;
-    entry.current_hp += 100;
-    entry.current_atk += 15;
-    entry.current_def += 12;
+    const base = this.getCharacterById(entry.character_id);
+    if (!base) return null;
+
+    const maxLevel = getMaxLevel(base.grade);
+
+    // 각성은 최대 레벨 도달 시에만 가능 (PRD 4.2)
+    if (entry.level < maxLevel) {
+      return null;
+    }
+
+    // 이미 최대 각성 (5성 이상) 불가
+    if (base.grade >= 5) {
+      return null;
+    }
+
+    // 비용: 5000 * 성급 골드 + 각성석(미구현 시 고정)
+    const goldCost = 5000 * base.grade;
+    if (user.gold < goldCost) {
+      return null;
+    }
+    user.gold -= goldCost;
+
+    // 각성: 성급 +1, 레벨 1로 초기화, 스탯 대폭 상승
+    entry.awakened = (entry.awakened || 0) + 1;
+    entry.level = 1;
+    entry.exp = 0;
+    entry.current_hp += 200 + base.grade * 50;
+    entry.current_atk += 30 + base.grade * 8;
+    entry.current_def += 25 + base.grade * 6;
+    entry.current_spd += 5 + base.grade * 1;
+
+    // grade bump is stored on base character - we track it via awakened count
+    // actual grade displayed = base.grade + entry.awakened (capped at 5)
 
     persist(async () => {
       await db.update(userCharactersTable)
         .set({
-          awakened: true,
+          awakened: entry.awakened,
+          level: entry.level,
+          exp: entry.exp,
           currentHp: entry.current_hp,
           currentAtk: entry.current_atk,
           currentDef: entry.current_def,
+          currentSpd: entry.current_spd,
         })
         .where(eq(userCharactersTable.id, userCharacterId));
+      await db.update(usersTable)
+        .set({ gold: user.gold, updatedAt: now() })
+        .where(eq(usersTable.id, userId));
     });
 
     return this.getUserCharacterDetail(userId, userCharacterId);
@@ -655,14 +1424,48 @@ export const dataStore = {
     const costPerPull = type === 'premium' ? 300 : 100;
     const totalCost = costPerPull * count;
 
-    user.crystals = Math.max(0, user.crystals - totalCost);
+    if (user.crystals < totalCost) {
+      return [];
+    }
+
+    user.crystals -= totalCost;
 
     const owned = this.getUserCharacters(userId);
 
+    // Grade probability pool
+    const gradePool = (isPremium: boolean, isGuarantee: boolean): number => {
+      if (isGuarantee) {
+        // 10-pull guarantee: at least 4-star
+        const r = Math.random();
+        if (r < 0.01) return 5;
+        if (r < 0.05) return 4;
+        return 4;
+      }
+      const r = Math.random();
+      if (isPremium) {
+        if (r < 0.02) return 5;
+        if (r < 0.10) return 4;
+        if (r < 0.30) return 3;
+        if (r < 0.60) return 2;
+        return 1;
+      }
+      if (r < 0.01) return 5;
+      if (r < 0.05) return 4;
+      if (r < 0.20) return 3;
+      if (r < 0.50) return 2;
+      return 1;
+    };
+
     const results = Array.from({ length: totalCount }).map((_value, index) => {
-      let targetPool = characters;
-      if (type === 'premium' || (count === 10 && index === totalCount - 1)) {
-        targetPool = characters.filter((character) => character.grade >= 3);
+      const isGuarantee = count === 10 && index === totalCount - 1;
+      const targetGrade = gradePool(type === 'premium', isGuarantee);
+
+      let targetPool = characters.filter((c) => c.grade === targetGrade);
+      if (targetPool.length === 0) {
+        targetPool = characters.filter((c) => c.grade <= targetGrade);
+      }
+      if (targetPool.length === 0) {
+        targetPool = characters;
       }
 
       const picked = targetPool[Math.floor(Math.random() * targetPool.length)];
@@ -692,6 +1495,9 @@ export const dataStore = {
     });
 
     userCharacters.set(userId, owned);
+
+    // Advance summon quest
+    advanceQuestProgress(userId, 'summon', count);
 
     persist(async () => {
       await db.update(usersTable)
@@ -737,6 +1543,9 @@ export const dataStore = {
     return results;
   },
 
+  // ============================================================
+  // Dungeons
+  // ============================================================
   getDungeons(chapter?: number): Dungeon[] {
     if (!chapter) {
       return dungeons;
@@ -772,6 +1581,75 @@ export const dataStore = {
     return true;
   },
 
+  // ============================================================
+  // Dungeon progress
+  // ============================================================
+  getDungeonProgress(userId: number): { cleared: number[]; chapter: number; stage: number } {
+    const cleared = dungeonCleared.get(userId);
+    const clearedIds = cleared ? Array.from(cleared) : [];
+    // Determine highest chapter/stage
+    let maxChapter = 1;
+    let maxStage = 0;
+    clearedIds.forEach((id) => {
+      const d = this.getDungeonById(id);
+      if (d) {
+        if (d.chapter > maxChapter || (d.chapter === maxChapter && d.stage > maxStage)) {
+          maxChapter = d.chapter;
+          maxStage = d.stage;
+        }
+      }
+    });
+    return { cleared: clearedIds, chapter: maxChapter, stage: maxStage };
+  },
+
+  markDungeonCleared(userId: number, dungeonId: number): void {
+    let set = dungeonCleared.get(userId);
+    if (!set) {
+      set = new Set();
+      dungeonCleared.set(userId, set);
+    }
+    set.add(dungeonId);
+  },
+
+  isDungeonUnlocked(userId: number, dungeonId: number): boolean {
+    const dungeon = this.getDungeonById(dungeonId);
+    if (!dungeon) return false;
+
+    // First stage of normal chapter 1 is always unlocked
+    if (dungeon.chapter === 1 && dungeon.stage === 1 && dungeon.difficulty === 'normal') return true;
+
+    const cleared = dungeonCleared.get(userId) || new Set<number>();
+
+    // Same difficulty: previous stage must be cleared
+    if (dungeon.stage > 1) {
+      const prevDungeon = dungeons.find((d) => d.chapter === dungeon.chapter && d.stage === dungeon.stage - 1 && d.difficulty === dungeon.difficulty);
+      if (prevDungeon && !cleared.has(prevDungeon.id)) return false;
+    }
+
+    // Hard requires all normal cleared for this chapter
+    if (dungeon.difficulty === 'hard') {
+      const normalStages = dungeons.filter((d) => d.chapter === dungeon.chapter && d.difficulty === 'normal');
+      if (!normalStages.every((d) => cleared.has(d.id))) return false;
+    }
+
+    // Hell requires all hard cleared for this chapter
+    if (dungeon.difficulty === 'hell') {
+      const hardStages = dungeons.filter((d) => d.chapter === dungeon.chapter && d.difficulty === 'hard');
+      if (!hardStages.every((d) => cleared.has(d.id))) return false;
+    }
+
+    // Chapter 2 requires chapter 1 normal boss (stage 5) cleared
+    if (dungeon.chapter === 2 && dungeon.stage === 1 && dungeon.difficulty === 'normal') {
+      const ch1Boss = dungeons.find((d) => d.chapter === 1 && d.stage === 5 && d.difficulty === 'normal');
+      if (ch1Boss && !cleared.has(ch1Boss.id)) return false;
+    }
+
+    return true;
+  },
+
+  // ============================================================
+  // Battle creation with proper ATB/wave system
+  // ============================================================
   createBattleFromDungeon(userId: number, dungeonId: number): BattleState | null {
     const dungeon = this.getDungeonById(dungeonId);
     if (!dungeon) {
@@ -780,7 +1658,7 @@ export const dataStore = {
 
     const memberIds = this.getParty(userId);
     const ownCharacters = this.getUserCharacters(userId);
-    const allies = memberIds
+    const allies: BattleUnit[] = memberIds
       .map((memberId) => ownCharacters.find((entry) => entry.id === memberId))
       .filter((entry): entry is UserCharacter => !!entry)
       .slice(0, 4)
@@ -807,71 +1685,85 @@ export const dataStore = {
           accuracy: entry.accuracy,
           resistance: entry.resistance,
           atb_gauge: 0,
-          skills: [{
-            skill_id: base.skill_1_id,
-            slot_index: 0,
-            name: 'Basic Attack',
-            skill_type: 'damage',
-            target_type: 'single',
-            multiplier: 1,
-            max_cooldown: 0,
-            current_cd: 0,
-            effects: 'deal damage',
-          }],
+          skills: buildSkillsForUnit(base),
           buffs: [],
           debuffs: [],
           is_alive: true,
         };
       });
 
-    const enemies = [0, 1, 2].map((position) => ({
-      unit_id: `enemy-${uuidv4()}`,
-      team: 'enemy' as const,
-      char_id: 900 + position,
-      name: `Dungeon Mob ${position + 1}`,
-      grade: 1,
-      element: 'wind',
-      class: 'warrior',
-      image_url: '/monsters/enemy_default.png',
-      level: dungeon.chapter + dungeon.stage,
-      position,
-      hp: 450 + position * 70,
-      max_hp: 450 + position * 70,
-      atk: 80,
-      def: 55,
-      spd: 95,
-      crit_rate: 15,
-      crit_damage: 50,
-      accuracy: 0,
-      resistance: 0,
-      atb_gauge: 0,
-      skills: [{
-        skill_id: 999,
-        slot_index: 0,
-        name: 'Claw',
-        skill_type: 'damage',
-        target_type: 'single',
-        multiplier: 1,
-        max_cooldown: 0,
-        current_cd: 0,
-        effects: 'deal damage',
-      }],
-      buffs: [],
-      debuffs: [],
-      is_alive: true,
-    }));
+    // Build enemies from wave data
+    const waveData = dungeon.wave_data;
+    const firstWave = waveData ? waveData[0] : undefined;
+    const totalWaves = waveData ? waveData.length : 1;
+
+    const enemies: BattleUnit[] = firstWave
+      ? firstWave.enemies.map((e, i) => ({
+          unit_id: `enemy-${uuidv4()}`,
+          team: 'enemy' as const,
+          char_id: e.char_id,
+          name: e.name,
+          grade: 1,
+          element: e.element,
+          class: 'warrior',
+          image_url: '/monsters/enemy_default.png',
+          level: e.level,
+          position: i,
+          hp: e.hp,
+          max_hp: e.hp,
+          atk: e.atk,
+          def: e.def,
+          spd: e.spd,
+          crit_rate: 10,
+          crit_damage: 50,
+          accuracy: 0,
+          resistance: 0,
+          atb_gauge: 0,
+          skills: buildEnemySkills(),
+          buffs: [],
+          debuffs: [],
+          is_alive: true,
+        }))
+      : [0, 1, 2].map((position) => ({
+          unit_id: `enemy-${uuidv4()}`,
+          team: 'enemy' as const,
+          char_id: 900 + position,
+          name: `Dungeon Mob ${position + 1}`,
+          grade: 1,
+          element: 'wind',
+          class: 'warrior',
+          image_url: '/monsters/enemy_default.png',
+          level: dungeon.chapter + dungeon.stage,
+          position,
+          hp: 450 + position * 70,
+          max_hp: 450 + position * 70,
+          atk: 80,
+          def: 55,
+          spd: 95,
+          crit_rate: 10,
+          crit_damage: 50,
+          accuracy: 0,
+          resistance: 0,
+          atb_gauge: 0,
+          skills: buildEnemySkills(),
+          buffs: [],
+          debuffs: [],
+          is_alive: true,
+        }));
 
     const battleState: BattleState = {
       battle_id: battleIdSeq++,
-      phase: 'action_select',
+      dungeon_id: dungeonId,
+      user_id: userId,
+      phase: 'in_wave',
       current_wave: 1,
-      total_waves: 1,
+      total_waves: totalWaves,
       allies,
       enemies,
-      active_unit_id: allies[0]?.unit_id,
+      active_unit_id: undefined,
       auto_mode: false,
       speed_multiplier: 1,
-      turn_counter: 1,
+      turn_counter: 0,
       events: [],
     };
 
@@ -887,11 +1779,390 @@ export const dataStore = {
     battles.set(battle.battle_id, battle);
   },
 
+  // ATB tick and auto-action processing
+  processBattleTick(battleId: number): BattleState | null {
+    const battle = battles.get(battleId);
+    if (!battle || battle.phase === 'battle_end') return battle || null;
+
+    if (battle.phase === 'action_select') return battle;
+
+    // Run multiple ticks to advance the battle
+    const ticksToRun = 10 * battle.speed_multiplier;
+    advanceBattleTick(battle, ticksToRun);
+
+    // Check wave clear → spawn next wave
+    if (battle.phase === 'wave_clear' && battle.current_wave <= battle.total_waves) {
+      this.spawnNextWave(battle);
+      battle.phase = 'in_wave';
+    }
+
+    // Set result if battle ended (phase may be mutated by advanceBattleTick)
+    const phase = battle.phase as string;
+    if (phase === 'battle_end' && !battle.result) {
+      const alliesAlive = battle.allies.some((a) => a.is_alive);
+      const dungeon = this.getDungeonById(battle.dungeon_id || 0);
+      if (alliesAlive) {
+        battle.result = {
+          battle_id: battle.battle_id,
+          result: 'victory',
+          waves_cleared: battle.total_waves,
+          gold: dungeon?.gold_reward || 0,
+          exp: dungeon?.exp_reward || 0,
+          crystals: dungeon?.crystal_reward || 0,
+        };
+        if (dungeon && battle.user_id) {
+          this.markDungeonCleared(battle.user_id, dungeon.id);
+          advanceQuestProgress(battle.user_id, 'dungeon_clear');
+          const user = this.getUserById(battle.user_id);
+          if (user) {
+            user.gold += dungeon.gold_reward;
+            user.exp += dungeon.exp_reward;
+            user.crystals += dungeon.crystal_reward || 0;
+          }
+        }
+      } else {
+        battle.result = {
+          battle_id: battle.battle_id,
+          result: 'defeat',
+          waves_cleared: Math.max(0, battle.current_wave - 1),
+          gold: 0,
+          exp: 0,
+          crystals: 0,
+        };
+      }
+    }
+
+    return battle;
+  },
+
+  spawnNextWave(battle: BattleState): void {
+    const dungeon = this.getDungeonById(battle.dungeon_id || 0);
+    if (!dungeon || !dungeon.wave_data) return;
+
+    const waveData = dungeon.wave_data[battle.current_wave - 1];
+    if (!waveData) return;
+
+    battle.enemies = waveData.enemies.map((e, i) => ({
+      unit_id: `enemy-${uuidv4()}`,
+      team: 'enemy' as const,
+      char_id: e.char_id,
+      name: e.name,
+      grade: 1,
+      element: e.element,
+      class: 'warrior',
+      image_url: '/monsters/enemy_default.png',
+      level: e.level,
+      position: i,
+      hp: e.hp,
+      max_hp: e.hp,
+      atk: e.atk,
+      def: e.def,
+      spd: e.spd,
+      crit_rate: 10,
+      crit_damage: 50,
+      accuracy: 0,
+      resistance: 0,
+      atb_gauge: 0,
+      skills: buildEnemySkills(),
+      buffs: [],
+      debuffs: [],
+      is_alive: true,
+    }));
+  },
+
+  // Manual action from player
+  battleAction(battleId: number, unitId?: string, skillIndex?: number, targetIds?: string[]): BattleState | null {
+    const battle = battles.get(battleId);
+    if (!battle) return null;
+
+    if (battle.phase === 'action_select' && unitId) {
+      const actor = battle.allies.find((a) => a.unit_id === unitId);
+      if (!actor || !actor.is_alive) return battle;
+
+      const sIdx = typeof skillIndex === 'number' ? skillIndex : 0;
+      const skill = actor.skills[sIdx] || actor.skills[0];
+
+      let targets: BattleUnit[] = [];
+      if (skill.target_type === 'all_enemies') {
+        targets = battle.enemies.filter((e) => e.is_alive);
+      } else if (skill.target_type === 'all_allies' || skill.target_type === 'self') {
+        targets = skill.target_type === 'self' ? [actor] : battle.allies.filter((a) => a.is_alive);
+      } else if (targetIds && targetIds.length > 0) {
+        const allUnits = [...battle.allies, ...battle.enemies];
+        targets = targetIds.map((tid) => allUnits.find((u) => u.unit_id === tid)).filter((u): u is BattleUnit => !!u && u.is_alive);
+      } else {
+        // Default: first alive enemy
+        const target = battle.enemies.find((e) => e.is_alive);
+        if (target) targets = [target];
+      }
+
+      executeAction(battle, actor, sIdx, targets);
+
+      // Check wave/end
+      if (!battle.enemies.some((e) => e.is_alive)) {
+        if (battle.current_wave < battle.total_waves) {
+          battle.current_wave += 1;
+          this.spawnNextWave(battle);
+          battle.phase = 'in_wave';
+        } else {
+          battle.phase = 'battle_end';
+        }
+      } else if (!battle.allies.some((a) => a.is_alive)) {
+        battle.phase = 'battle_end';
+      } else {
+        battle.phase = 'in_wave';
+      }
+    }
+
+    // Process ticks if in_wave
+    if (battle.phase === 'in_wave') {
+      return this.processBattleTick(battleId);
+    }
+
+    // Set result if ended
+    if (battle.phase === 'battle_end' && !battle.result) {
+      const alliesAlive = battle.allies.some((a) => a.is_alive);
+      const dungeon = this.getDungeonById(battle.dungeon_id || 0);
+      if (alliesAlive) {
+        battle.result = {
+          battle_id: battle.battle_id,
+          result: 'victory',
+          waves_cleared: battle.total_waves,
+          gold: dungeon?.gold_reward || 0,
+          exp: dungeon?.exp_reward || 0,
+          crystals: dungeon?.crystal_reward || 0,
+        };
+        if (dungeon && battle.user_id) {
+          this.markDungeonCleared(battle.user_id, dungeon.id);
+          advanceQuestProgress(battle.user_id, 'dungeon_clear');
+          const user = this.getUserById(battle.user_id);
+          if (user) {
+            user.gold += dungeon.gold_reward;
+            user.exp += dungeon.exp_reward;
+            user.crystals += dungeon.crystal_reward || 0;
+          }
+        }
+      } else {
+        battle.result = {
+          battle_id: battle.battle_id,
+          result: 'defeat',
+          waves_cleared: Math.max(0, battle.current_wave - 1),
+          gold: 0,
+          exp: 0,
+          crystals: 0,
+        };
+      }
+    }
+
+    return battle;
+  },
+
   getBattleResult(battleId: number): BattleState['result'] | null {
     const battle = battles.get(battleId);
     return battle?.result || null;
   },
 
+  // ============================================================
+  // Shop
+  // ============================================================
+  getShopItems(): Array<Record<string, unknown>> {
+    return shopItems.map((item) => ({
+      ...item,
+      remaining_today: item.daily_limit,
+    }));
+  },
+
+  purchaseItem(userId: number, shopItemId: number, quantity: number): boolean {
+    const user = this.getUserById(userId);
+    const item = shopItems.find((shopItem) => shopItem.id === shopItemId);
+
+    if (!user || !item || quantity <= 0) {
+      return false;
+    }
+
+    // Check daily limit
+    const today = todayKey();
+    let userPurchases = purchaseHistory.get(userId);
+    if (!userPurchases) {
+      userPurchases = new Map();
+      purchaseHistory.set(userId, userPurchases);
+    }
+    const todayPurchases = userPurchases.get(today) || [];
+    const todayBought = todayPurchases.filter((p) => p.shop_item_id === shopItemId).reduce((sum, p) => sum + p.quantity, 0);
+    if (todayBought + quantity > item.daily_limit) {
+      return false;
+    }
+
+    const totalCost = item.price * quantity;
+    if (item.currency_type === 'gold') {
+      if (user.gold < totalCost) {
+        return false;
+      }
+      user.gold -= totalCost;
+      if (item.item_type === 'energy') {
+        user.energy = Math.min(user.maxEnergy, user.energy + 10 * quantity);
+      }
+    } else {
+      if (user.crystals < totalCost) {
+        return false;
+      }
+      user.crystals -= totalCost;
+    }
+
+    // Record purchase
+    todayPurchases.push({ shop_item_id: shopItemId, quantity, purchased_at: now() });
+    userPurchases.set(today, todayPurchases);
+
+    persist(async () => {
+      await db.update(usersTable)
+        .set({
+          gold: user.gold,
+          crystals: user.crystals,
+          energy: user.energy,
+          updatedAt: now(),
+        })
+        .where(eq(usersTable.id, userId));
+    });
+
+    return true;
+  },
+
+  getShopHistory(userId: number): PurchaseRecord[] {
+    const userPurchases = purchaseHistory.get(userId);
+    if (!userPurchases) return [];
+    const allRecords: PurchaseRecord[] = [];
+    userPurchases.forEach((records) => allRecords.push(...records));
+    return allRecords.sort((a, b) => b.purchased_at.localeCompare(a.purchased_at));
+  },
+
+  // ============================================================
+  // Daily quests
+  // ============================================================
+  getDailyQuests(userId: number): Array<Record<string, unknown>> {
+    const quests = ensureUserQuests(userId);
+    return dailyQuestTemplates.map((template) => {
+      const progress = quests.get(template.id)!;
+      return {
+        id: template.id,
+        type: template.type,
+        title: template.title,
+        description: template.description,
+        progress: progress.progress,
+        goal: template.goal,
+        rewards: template.rewards,
+        isCompleted: progress.is_completed,
+        isClaimed: progress.is_claimed,
+      };
+    });
+  },
+
+  completeQuest(questId: number): boolean {
+    // Manual complete (mostly used for testing)
+    const template = dailyQuestTemplates.find((q) => q.id === questId);
+    return !!template;
+  },
+
+  claimQuest(userId: number, questId: number): Record<string, unknown> | null {
+    const user = this.getUserById(userId);
+    const quests = ensureUserQuests(userId);
+    const progress = quests.get(questId);
+    const template = dailyQuestTemplates.find((q) => q.id === questId);
+
+    if (!user || !progress || !template || !progress.is_completed || progress.is_claimed) {
+      return null;
+    }
+
+    progress.is_claimed = true;
+    template.rewards.forEach((reward) => {
+      if (reward.name === 'gold') {
+        user.gold += reward.quantity;
+      }
+      if (reward.name === 'crystal') {
+        user.crystals += reward.quantity;
+      }
+    });
+
+    persist(async () => {
+      await db.update(usersTable)
+        .set({
+          gold: user.gold,
+          crystals: user.crystals,
+          updatedAt: now(),
+        })
+        .where(eq(usersTable.id, userId));
+    });
+
+    return {
+      questId,
+      rewards: template.rewards,
+    };
+  },
+
+  // ============================================================
+  // Daily login
+  // ============================================================
+  claimDailyLogin(userId: number): { claimed: boolean; rewards: Array<{ type: string; name: string; quantity: number }>; consecutiveDays: number } {
+    const user = this.getUserById(userId);
+    if (!user) return { claimed: false, rewards: [], consecutiveDays: 0 };
+
+    const today = todayKey();
+    let loginData = dailyLogin.get(userId);
+
+    if (!loginData) {
+      loginData = { last_login_date: '', consecutive_days: 0, claimed_today: false };
+      dailyLogin.set(userId, loginData);
+    }
+
+    if (loginData.last_login_date === today && loginData.claimed_today) {
+      return { claimed: false, rewards: [], consecutiveDays: loginData.consecutive_days };
+    }
+
+    // Calculate consecutive days
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = yesterday.toISOString().slice(0, 10);
+
+    if (loginData.last_login_date === yesterdayKey) {
+      loginData.consecutive_days += 1;
+    } else if (loginData.last_login_date !== today) {
+      loginData.consecutive_days = 1;
+    }
+
+    loginData.last_login_date = today;
+    loginData.claimed_today = true;
+
+    // Rewards based on consecutive days
+    const day = loginData.consecutive_days;
+    const rewards: Array<{ type: string; name: string; quantity: number }> = [];
+
+    rewards.push({ type: 'currency', name: 'gold', quantity: 1000 + (day - 1) * 200 });
+    if (day >= 3) rewards.push({ type: 'currency', name: 'crystal', quantity: 20 + (day - 3) * 10 });
+    if (day >= 7) rewards.push({ type: 'currency', name: 'crystal', quantity: 50 });
+
+    rewards.forEach((reward) => {
+      if (reward.name === 'gold') user.gold += reward.quantity;
+      if (reward.name === 'crystal') user.crystals += reward.quantity;
+    });
+
+    // Advance login quest
+    advanceQuestProgress(userId, 'login');
+
+    persist(async () => {
+      await db.update(usersTable)
+        .set({
+          gold: user.gold,
+          crystals: user.crystals,
+          updatedAt: now(),
+        })
+        .where(eq(usersTable.id, userId));
+    });
+
+    return { claimed: true, rewards, consecutiveDays: loginData.consecutive_days };
+  },
+
+  // ============================================================
+  // Arena / Guild (kept from original)
+  // ============================================================
   getArenaRanking(): Array<Record<string, unknown>> {
     return Array.from(users.values()).map((user, index) => ({
       userId: String(user.id),
@@ -1021,107 +2292,6 @@ export const dataStore = {
       return null;
     }
     return this.getGuildById(guildId);
-  },
-
-  getShopItems(): Array<Record<string, unknown>> {
-    return shopItems;
-  },
-
-  purchaseItem(userId: number, shopItemId: number, quantity: number): boolean {
-    const user = this.getUserById(userId);
-    const item = shopItems.find((shopItem) => shopItem.id === shopItemId);
-
-    if (!user || !item || quantity <= 0) {
-      return false;
-    }
-
-    const totalCost = item.price * quantity;
-    if (item.currency_type === 'gold') {
-      if (user.gold < totalCost) {
-        return false;
-      }
-      user.gold -= totalCost;
-      if (item.item_type === 'energy') {
-        user.energy = Math.min(user.maxEnergy, user.energy + 20 * quantity);
-      }
-
-      persist(async () => {
-        await db.update(usersTable)
-          .set({
-            gold: user.gold,
-            energy: user.energy,
-            updatedAt: now(),
-          })
-          .where(eq(usersTable.id, userId));
-      });
-
-      return true;
-    }
-
-    if (user.crystals < totalCost) {
-      return false;
-    }
-
-    user.crystals -= totalCost;
-
-    persist(async () => {
-      await db.update(usersTable)
-        .set({
-          crystals: user.crystals,
-          updatedAt: now(),
-        })
-        .where(eq(usersTable.id, userId));
-    });
-
-    return true;
-  },
-
-  getDailyQuests(): Array<Record<string, unknown>> {
-    return dailyQuests;
-  },
-
-  completeQuest(questId: number): boolean {
-    const quest = dailyQuests.find((entry) => entry.id === questId);
-    if (!quest) {
-      return false;
-    }
-    quest.progress = quest.goal;
-    quest.isCompleted = true;
-    return true;
-  },
-
-  claimQuest(userId: number, questId: number): Record<string, unknown> | null {
-    const user = this.getUserById(userId);
-    const quest = dailyQuests.find((entry) => entry.id === questId);
-
-    if (!user || !quest || !quest.isCompleted || quest.isClaimed) {
-      return null;
-    }
-
-    quest.isClaimed = true;
-    quest.rewards.forEach((reward) => {
-      if (reward.name === 'gold') {
-        user.gold += reward.quantity;
-      }
-      if (reward.name === 'crystal') {
-        user.crystals += reward.quantity;
-      }
-    });
-
-    persist(async () => {
-      await db.update(usersTable)
-        .set({
-          gold: user.gold,
-          crystals: user.crystals,
-          updatedAt: now(),
-        })
-        .where(eq(usersTable.id, userId));
-    });
-
-    return {
-      questId,
-      rewards: quest.rewards,
-    };
   },
 };
 

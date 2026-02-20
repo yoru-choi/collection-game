@@ -4,8 +4,8 @@ import { COLORS } from '@/utils/Constants';
 export class HealthBar extends Phaser.GameObjects.Container {
   private background: Phaser.GameObjects.Graphics;
   private bar: Phaser.GameObjects.Graphics;
-  private width: number;
-  private height: number;
+  private barWidth: number;
+  private barHeight: number;
   private currentValue: number = 1;
 
   constructor(
@@ -18,8 +18,8 @@ export class HealthBar extends Phaser.GameObjects.Container {
   ) {
     super(scene, x, y);
 
-    this.width = width;
-    this.height = height;
+    this.barWidth = width;
+    this.barHeight = height;
 
     // Background
     this.background = scene.add.graphics();
@@ -32,6 +32,7 @@ export class HealthBar extends Phaser.GameObjects.Container {
     this.bar = scene.add.graphics();
     this.bar.fillStyle(color);
     this.bar.fillRoundedRect(0, 0, width, height, height / 2);
+
 
     this.add([this.background, this.bar]);
     scene.add.existing(this);
@@ -68,6 +69,6 @@ export class HealthBar extends Phaser.GameObjects.Container {
     }
     
     this.bar.fillStyle(color);
-    this.bar.fillRoundedRect(0, 0, this.width * this.currentValue, this.height, this.height / 2);
+    this.bar.fillRoundedRect(0, 0, this.barWidth * this.currentValue, this.barHeight, this.barHeight / 2);
   }
 }

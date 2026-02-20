@@ -159,6 +159,18 @@ export class BattleService {
     }
   }
 
+  async tick(battleId: number): Promise<BattleStateResponse | null> {
+    try {
+      const response = await httpClient.post<ApiResponse<BattleStateApi>>(
+        `/battle/${battleId}/tick`
+      );
+      return response.data ? this.mapState(response.data) : null;
+    } catch (error) {
+      console.error('Battle tick error:', error);
+      return null;
+    }
+  }
+
   async surrender(battleId: number): Promise<boolean> {
     try {
       await httpClient.post<ApiResponse<void>>(`/battle/${battleId}/surrender`);

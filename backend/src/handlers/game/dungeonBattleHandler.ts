@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { ok } from '../../utils/response';
 import { gameService } from '../../services/gameService';
 import { sendResult } from '../http';
 
@@ -9,12 +8,8 @@ export const gameDungeonBattleHandler = {
     sendResult(res, gameService.getDungeons(chapter));
   },
 
-  getDungeonProgress: (_req: Request, res: Response): void => {
-    ok(res, {
-      chapter: 1,
-      stage: 1,
-      cleared: [101],
-    });
+  getDungeonProgress: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getDungeonProgress(req.userId!));
   },
 
   getDungeon: (req: Request, res: Response): void => {
@@ -34,7 +29,17 @@ export const gameDungeonBattleHandler = {
   },
 
   battleAction: (req: Request, res: Response): void => {
-    sendResult(res, gameService.battleAction(Number(req.params.id), req.body?.unit_id));
+    const { unit_id, skill_index, target_ids } = req.body || {};
+    sendResult(res, gameService.battleAction(
+      Number(req.params.id),
+      unit_id,
+      typeof skill_index === 'number' ? skill_index : undefined,
+      Array.isArray(target_ids) ? target_ids : undefined,
+    ));
+  },
+
+  processBattleTick: (req: Request, res: Response): void => {
+    sendResult(res, gameService.processBattleTick(Number(req.params.id)));
   },
 
   setBattleAuto: (req: Request, res: Response): void => {

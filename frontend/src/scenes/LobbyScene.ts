@@ -2,6 +2,9 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, COLORS, UI } from '@/utils/Constants';
 import { addSceneFrame } from '@/utils/SceneFrame';
 import { GameDataStore } from '@/store/GameDataStore';
+import { questService } from '@/services/QuestService';
+import { httpClient } from '@/services/api/HttpClient';
+import { ApiResponse } from '@/types';
 
 export class LobbyScene extends Phaser.Scene {
   private gameData!: GameDataStore;
@@ -30,6 +33,12 @@ export class LobbyScene extends Phaser.Scene {
 
     // News/Event banner
     this.createEventBanner(width, height);
+
+    // Quest notification icon (bottom right)
+    this.createQuestNotification(width, height);
+
+    // Claim daily login on scene load
+    this.claimDailyLogin();
 
     addSceneFrame(this);
   }
@@ -258,12 +267,12 @@ export class LobbyScene extends Phaser.Scene {
 
   private createMenuButtons(width: number, height: number): void {
     const buttonData = [
+      { text: 'Dungeon', scene: SCENE_KEYS.DUNGEON_SELECT, icon: '🏰', color: COLORS.DANGER },
       { text: 'Summon', scene: SCENE_KEYS.SUMMON, icon: '🎲', color: COLORS.SECONDARY },
       { text: 'Characters', scene: SCENE_KEYS.CHARACTER_LIST, icon: '👥', color: COLORS.PRIMARY },
-      { text: 'Dungeon', scene: SCENE_KEYS.DUNGEON_SELECT, icon: '🏰', color: COLORS.DANGER },
+      { text: 'Shop', scene: SCENE_KEYS.SHOP, icon: '🛒', color: COLORS.SUCCESS },
       { text: 'Arena', scene: SCENE_KEYS.ARENA, icon: '⚔️', color: COLORS.WARNING },
       { text: 'Guild', scene: SCENE_KEYS.GUILD, icon: '🛡️', color: COLORS.INFO },
-      { text: 'Shop', scene: SCENE_KEYS.SHOP, icon: '🛒', color: COLORS.SUCCESS },
       { text: 'Inventory', scene: SCENE_KEYS.INVENTORY, icon: '🎒', color: COLORS.PRIMARY },
     ];
 
@@ -671,6 +680,196 @@ export class LobbyScene extends Phaser.Scene {
       console.log('Event banner clicked');
       this.scene.start(SCENE_KEYS.SUMMON);
     });
+  }
+
+  private createQuestNotification(width: number, height: number): void {
+    const btnX = width - 80;
+    const btnY = height - 80;
+
+    const button = this.add.container(btnX, btnY);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(COLORS.WARNING, 0.9);
+    bg.fillCircle(0, 0, 32);
+    bg.lineStyle(3, COLORS.GOLD, 0.8);
+    bg.strokeCircle(0, 0, 32);
+
+    const icon = this.add.text(0, 0, '📋', { fontSize: '30px' });
+    icon.setOrigin(0.5);
+
+    button.add([bg, icon]);
+    button.setSize(64, 64);
+    button.setInteractive({ useHandCursor: true });
+
+    // Badge for unclaimed quests
+    const badge = this.add.circle(18, -18, 10, COLORS.DANGER);
+    badge.setStrokeStyle(2, COLORS.LIGHT);
+    const badgeText = this.add.text(18, -18, '!', {
+      fontSize: '12px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    button.add([badge, badgeText]);
+
+    // Pulse badge
+    this.tweens.add({
+      targets: [badge, badgeText],
+      scaleX: 1.3,
+      scaleY: 1.3,
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    button.on('pointerdown', () => {
+      this.showQuestPanel();
+    });
+
+    // Check for unclaimed quests
+    this.checkQuests(badge, badgeText);
+  }
+
+  private async checkQuests(badge: Phaser.GameObjects.Arc, badgeText: Phaser.GameObjects.Text): Promise<void> {
+    try {
+      const quests = await questService.getDailyQuests();
+      const hasUnclaimed = quests.some(q => q.isCompleted && !q.isClaimed);
+      badge.setVisible(hasUnclaimed);
+      badgeText.setVisible(hasUnclaimed);
+    } catch {
+      badge.setVisible(false);
+      badgeText.setVisible(false);
+    }
+  }
+
+  private async showQuestPanel(): Promise<void> {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+
+    const overlay = this.add.container(0, 0);
+    overlay.setDepth(100);
+
+    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.6);
+    dim.setOrigin(0);
+    dim.setInteractive();
+    overlay.add(dim);
+
+    const panelW = 500;
+    const panelH = 400;
+    const panel = this.add.graphics();
+    panel.fillStyle(COLORS.DARK, 0.95);
+    panel.fillRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 15);
+    panel.lineStyle(2, COLORS.WARNING);
+    panel.strokeRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 15);
+    overlay.add(panel);
+
+    const titleText = this.add.text(width / 2, height / 2 - panelH / 2 + 30, 'Daily Quests', {
+      fontFamily: UI.FONTS.TITLE,
+      fontSize: '24px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    overlay.add(titleText);
+
+    try {
+      const quests = await questService.getDailyQuests();
+      const startY = height / 2 - panelH / 2 + 70;
+
+      quests.forEach((quest, i) => {
+        const y = startY + i * 60;
+
+        const questTitle = this.add.text(width / 2 - panelW / 2 + 30, y, quest.title, {
+          fontFamily: UI.FONTS.UI,
+          fontSize: '16px',
+          color: this.colorToCss(COLORS.TEXT_PRIMARY),
+        });
+        overlay.add(questTitle);
+
+        const progressStr = `${quest.progress}/${quest.goal}`;
+        const progressText = this.add.text(width / 2 + 60, y, progressStr, {
+          fontFamily: UI.FONTS.UI,
+          fontSize: '14px',
+          color: quest.isCompleted ? this.colorToCss(COLORS.SUCCESS) : this.colorToCss(COLORS.TEXT_SECONDARY),
+        });
+        overlay.add(progressText);
+
+        if (quest.isCompleted && !quest.isClaimed) {
+          const claimBtn = this.add.text(width / 2 + 160, y, 'Claim', {
+            fontFamily: UI.FONTS.UI,
+            fontSize: '14px',
+            color: this.colorToCss(COLORS.WARNING),
+            fontStyle: 'bold',
+          });
+          claimBtn.setInteractive({ useHandCursor: true });
+          claimBtn.on('pointerdown', async () => {
+            try {
+              await questService.claimReward(String(quest.id));
+              claimBtn.setText('Claimed!');
+              claimBtn.setColor(this.colorToCss(COLORS.SUCCESS));
+              claimBtn.removeInteractive();
+            } catch {
+              claimBtn.setText('Failed');
+            }
+          });
+          overlay.add(claimBtn);
+        } else if (quest.isClaimed) {
+          const claimed = this.add.text(width / 2 + 160, y, 'Done', {
+            fontFamily: UI.FONTS.UI,
+            fontSize: '14px',
+            color: this.colorToCss(COLORS.TEXT_MUTED),
+          });
+          overlay.add(claimed);
+        }
+      });
+    } catch {
+      const errorText = this.add.text(width / 2, height / 2, 'Failed to load quests', {
+        fontSize: '16px',
+        color: '#ff4444',
+      }).setOrigin(0.5);
+      overlay.add(errorText);
+    }
+
+    // Close button
+    const closeBtn = this.add.container(width / 2, height / 2 + panelH / 2 - 30);
+    const closeBg = this.add.rectangle(0, 0, 120, 36, COLORS.INFO);
+    closeBg.setStrokeStyle(2, COLORS.LIGHT);
+    const closeText = this.add.text(0, 0, 'Close', {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '16px',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+    closeBtn.add([closeBg, closeText]);
+    closeBtn.setSize(120, 36);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => overlay.destroy());
+    overlay.add(closeBtn);
+  }
+
+  private async claimDailyLogin(): Promise<void> {
+    try {
+      const response = await httpClient.get<ApiResponse<{ claimed: boolean; rewards: Array<{ type: string; name: string; quantity: number }>; consecutiveDays: number }>>('/login/daily');
+      if (response.data?.claimed && response.data.rewards.length > 0) {
+        const rewardStr = response.data.rewards.map(r => `${r.name}: ${r.quantity}`).join(', ');
+        const width = this.cameras.main.width;
+        const toast = this.add.text(width / 2, 650, `Daily Login Reward! Day ${response.data.consecutiveDays}: ${rewardStr}`, {
+          fontSize: '16px',
+          color: '#ffcc00',
+          backgroundColor: '#000000aa',
+          padding: { left: 12, right: 12, top: 6, bottom: 6 },
+        });
+        toast.setOrigin(0.5);
+        toast.setDepth(50);
+        this.tweens.add({
+          targets: toast,
+          alpha: 0,
+          y: 620,
+          duration: 3000,
+          delay: 2000,
+          onComplete: () => toast.destroy(),
+        });
+      }
+    } catch {
+      // Silently ignore
+    }
   }
 
   private colorToCss(color: number): string {

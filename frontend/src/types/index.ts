@@ -350,6 +350,8 @@ export interface ShopItem {
   price: number;
   currencyType: string;
   stock?: number;
+  dailyLimit?: number;
+  dailyPurchased?: number;
   imageUrl?: string;
 }
 

@@ -33,6 +33,23 @@ export class AnimationLayer extends Phaser.GameObjects.Container {
   }
 
   private playEvent(event: TurnEventDisplay): void {
+    // DOT events (poison/burn damage over time)
+    if (event.eventType === 'dot') {
+      let delay = 0;
+      for (const target of event.targets) {
+        const targetDisplay = this.unitDisplays.get(target.targetId);
+        if (!targetDisplay) continue;
+        this.scene.time.delayedCall(delay, () => {
+          if (target.damage && target.damage > 0) {
+            targetDisplay.showDamageNumber(target.damage, false);
+          }
+        });
+        delay += 80;
+      }
+      this.scene.time.delayedCall(delay + 150, () => this.playNext());
+      return;
+    }
+
     const actor = this.unitDisplays.get(event.actorId);
 
     // Play attack animation on actor
@@ -67,9 +84,18 @@ export class AnimationLayer extends Phaser.GameObjects.Container {
         if (target.heal && target.heal > 0) {
           targetDisplay.showHealNumber(target.heal);
         }
+
+        // Show status effect applied notifications
+        if (target.applied && target.applied.length > 0) {
+          target.applied.forEach((effectType, idx) => {
+            this.scene.time.delayedCall(idx * 200, () => {
+              targetDisplay.showStatusEffect(effectType);
+            });
+          });
+        }
       });
 
-      delay += 100;
+      delay += 150;
     }
 
     // Move to next event after animation completes

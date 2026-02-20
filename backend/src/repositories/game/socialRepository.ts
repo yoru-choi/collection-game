@@ -13,8 +13,11 @@ export const gameSocialRepository = {
 
   getShopItems: () => dataStore.getShopItems(),
   purchaseItem: (userId: number, shopItemId: number, quantity: number) => dataStore.purchaseItem(userId, shopItemId, quantity),
+  getShopHistory: (userId: number) => dataStore.getShopHistory(userId),
 
-  getDailyQuests: () => dataStore.getDailyQuests(),
+  getDailyQuests: (userId: number) => dataStore.getDailyQuests(userId),
   completeQuest: (questId: number) => dataStore.completeQuest(questId),
   claimQuest: (userId: number, questId: number) => dataStore.claimQuest(userId, questId),
+
+  claimDailyLogin: (userId: number) => dataStore.claimDailyLogin(userId),
 };

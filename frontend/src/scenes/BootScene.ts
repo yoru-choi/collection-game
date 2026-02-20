@@ -103,7 +103,7 @@ export class BootScene extends Phaser.Scene {
 
   private createPlaceholderAssets(): void {
     // Create placeholder textures programmatically
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+    const graphics = this.make.graphics({ x: 0, y: 0 });
     
     // Button placeholder
     graphics.fillStyle(0x4a90e2);

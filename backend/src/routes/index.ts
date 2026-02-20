@@ -38,6 +38,7 @@ export const createApiRouter = (): Router => {
 
   router.get('/battle/:id/state', gameHandler.getBattleState);
   router.post('/battle/:id/action', gameHandler.battleAction);
+  router.post('/battle/:id/tick', gameHandler.processBattleTick);
   router.post('/battle/:id/auto', gameHandler.setBattleAuto);
   router.post('/battle/:id/speed', gameHandler.setBattleSpeed);
   router.post('/battle/:id/surrender', gameHandler.surrenderBattle);

@@ -92,12 +92,13 @@ export const gameSocialService = {
     return serviceOk({ purchased: true });
   },
 
-  getShopHistory(page: number, limit: number): ServiceResult<unknown> {
-    return serviceOk(paginate([], page, limit));
+  getShopHistory(userId: number, page: number, limit: number): ServiceResult<unknown> {
+    const history = gameRepository.getShopHistory(userId);
+    return serviceOk(paginate(history, page, limit));
   },
 
-  getDailyQuests(): ServiceResult<unknown[]> {
-    return serviceOk(gameRepository.getDailyQuests());
+  getDailyQuests(userId: number): ServiceResult<unknown[]> {
+    return serviceOk(gameRepository.getDailyQuests(userId));
   },
 
   completeQuest(questId: number): ServiceResult<unknown> {
@@ -115,5 +116,9 @@ export const gameSocialService = {
     }
 
     return serviceOk(result);
+  },
+
+  claimDailyLogin(userId: number): ServiceResult<unknown> {
+    return serviceOk(gameRepository.claimDailyLogin(userId));
   },
 };

@@ -9,6 +9,8 @@ type ShopItemApi = {
   currency_type: string;
   price: number;
   stock?: number;
+  daily_limit?: number;
+  daily_purchased?: number;
 };
 
 export class ShopService {
@@ -50,6 +52,8 @@ export class ShopService {
       price: item.price,
       currencyType: item.currency_type,
       stock: item.stock,
+      dailyLimit: item.daily_limit,
+      dailyPurchased: item.daily_purchased,
     };
   }
 }

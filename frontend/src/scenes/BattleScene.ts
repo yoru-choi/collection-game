@@ -343,7 +343,8 @@ export class BattleScene extends Phaser.Scene {
 
     this.isPolling = true;
     try {
-      const state = await battleService.getState(this.battleId);
+      // Use tick endpoint to advance ATB and get updated state
+      const state = await battleService.tick(this.battleId);
       if (state) {
         this.onStateReceived(state);
 

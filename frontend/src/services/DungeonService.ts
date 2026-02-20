@@ -59,7 +59,23 @@ export interface EnterDungeonResult {
   dungeon: Dungeon;
 }
 
+export interface DungeonProgress {
+  cleared: number[];
+  chapter: number;
+  stage: number;
+}
+
 export class DungeonService {
+  async getDungeonProgress(): Promise<DungeonProgress | null> {
+    try {
+      const response = await httpClient.get<ApiResponse<DungeonProgress>>('/dungeons/progress');
+      return response.data || null;
+    } catch (error) {
+      console.error('Get dungeon progress error:', error);
+      return null;
+    }
+  }
+
   async getDungeons(chapter?: number): Promise<Dungeon[]> {
     try {
       const url = chapter ? `/dungeons?chapter=${chapter}` : '/dungeons';

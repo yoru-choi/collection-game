@@ -79,6 +79,9 @@ export interface Dungeon {
   rewards: Array<{ type: string; name?: string; amount: number }>;
   exp_reward: number;
   gold_reward: number;
+  crystal_reward?: number;
+  character_shard_reward?: number;
+  wave_data?: DungeonWaveData[];
 }
 
 export interface BattleUnit {
@@ -120,6 +123,8 @@ export interface BattleUnit {
 
 export interface BattleState {
   battle_id: number;
+  dungeon_id?: number;
+  user_id?: number;
   phase: 'ready' | 'in_wave' | 'action_select' | 'animating' | 'wave_clear' | 'battle_end';
   current_wave: number;
   total_waves: number;
@@ -156,6 +161,60 @@ export interface BattleState {
     exp: number;
     crystals: number;
   };
+}
+
+export interface SkillDefinition {
+  id: number;
+  name: string;
+  skill_type: 'damage' | 'heal' | 'buff' | 'debuff';
+  target_type: 'single' | 'all_enemies' | 'all_allies' | 'self';
+  multiplier: number;
+  max_cooldown: number;
+  effects: string;
+  /** Effect type applied by this skill (buff or debuff side-effect) */
+  effect_type?: string;
+  /** Percent chance (0-100) the effect applies, default 100 */
+  effect_chance?: number;
+  /** Duration in turns, default 2 */
+  effect_duration?: number;
+  /** Numeric value: percent for stat changes, flat for shields */
+  effect_value?: number;
+}
+
+export interface DungeonWaveEnemy {
+  char_id: number;
+  name: string;
+  element: string;
+  level: number;
+  hp: number;
+  atk: number;
+  def: number;
+  spd: number;
+}
+
+export interface DungeonWaveData {
+  wave: number;
+  enemies: DungeonWaveEnemy[];
+}
+
+export interface PurchaseRecord {
+  shop_item_id: number;
+  quantity: number;
+  purchased_at: string;
+}
+
+export interface UserQuestProgress {
+  quest_id: number;
+  progress: number;
+  is_completed: boolean;
+  is_claimed: boolean;
+  reset_at: string;
+}
+
+export interface DailyLoginData {
+  last_login_date: string;
+  consecutive_days: number;
+  claimed_today: boolean;
 }
 
 declare global {

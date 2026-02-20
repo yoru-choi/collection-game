@@ -677,8 +677,83 @@ export class SummonScene extends Phaser.Scene {
   }
 
   private showRates(): void {
-    console.log('Show summon rates');
-    // TODO: Display rates in a popup
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+
+    const overlay = this.add.container(0, 0);
+    overlay.setDepth(100);
+
+    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.7);
+    dim.setOrigin(0);
+    dim.setInteractive();
+    overlay.add(dim);
+
+    const panelW = 400;
+    const panelH = 360;
+    const panel = this.add.graphics();
+    panel.fillStyle(COLORS.DARK, 0.95);
+    panel.fillRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 15);
+    panel.lineStyle(2, COLORS.PRIMARY_LIGHT);
+    panel.strokeRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 15);
+    overlay.add(panel);
+
+    const titleText = this.add.text(width / 2, height / 2 - panelH / 2 + 30, 'Summon Rates', {
+      fontFamily: UI.FONTS.TITLE,
+      fontSize: '24px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    overlay.add(titleText);
+
+    const rates = [
+      { grade: '1 Star', rate: '50%', color: '#aaaaaa' },
+      { grade: '2 Star', rate: '30%', color: '#55bb55' },
+      { grade: '3 Star', rate: '15%', color: '#5588ee' },
+      { grade: '4 Star', rate: '4%', color: '#cc66ff' },
+      { grade: '5 Star', rate: '1%', color: '#ffcc00' },
+    ];
+
+    const startY = height / 2 - panelH / 2 + 70;
+    rates.forEach((r, i) => {
+      const y = startY + i * 36;
+      const gradeText = this.add.text(width / 2 - 80, y, r.grade, {
+        fontFamily: UI.FONTS.UI,
+        fontSize: '18px',
+        color: r.color,
+      });
+      const rateText = this.add.text(width / 2 + 80, y, r.rate, {
+        fontFamily: UI.FONTS.UI,
+        fontSize: '18px',
+        color: r.color,
+        fontStyle: 'bold',
+      });
+      rateText.setOrigin(1, 0);
+      overlay.add([gradeText, rateText]);
+    });
+
+    const noteY = startY + rates.length * 36 + 20;
+    const note = this.add.text(width / 2, noteY, '10-pull guarantees at least one 4-star or higher!', {
+      fontFamily: UI.FONTS.BODY,
+      fontSize: '14px',
+      color: this.colorToCss(COLORS.WARNING_LIGHT),
+      wordWrap: { width: panelW - 40 },
+      align: 'center',
+    }).setOrigin(0.5, 0);
+    overlay.add(note);
+
+    const closeBtn = this.add.container(width / 2, height / 2 + panelH / 2 - 40);
+    const closeBg = this.add.rectangle(0, 0, 120, 40, COLORS.INFO);
+    closeBg.setStrokeStyle(2, COLORS.LIGHT);
+    const closeText = this.add.text(0, 0, 'Close', {
+      fontFamily: UI.FONTS.UI,
+      fontSize: '16px',
+      color: this.colorToCss(COLORS.TEXT_PRIMARY),
+    }).setOrigin(0.5);
+    closeBtn.add([closeBg, closeText]);
+    closeBtn.setSize(120, 40);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => overlay.destroy());
+    overlay.add(closeBtn);
   }
 
   private createBackButton(): void {

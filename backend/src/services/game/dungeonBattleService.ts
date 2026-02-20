@@ -15,10 +15,18 @@ export const gameDungeonBattleService = {
     return serviceOk(dungeon);
   },
 
+  getDungeonProgress(userId: number): ServiceResult<unknown> {
+    return serviceOk(gameRepository.getDungeonProgress(userId));
+  },
+
   enterDungeon(userId: number, dungeonId: number): ServiceResult<unknown> {
     const dungeon = gameRepository.getDungeonById(dungeonId);
     if (!dungeon) {
       return serviceFail('dungeon not found', 404);
+    }
+
+    if (!gameRepository.isDungeonUnlocked(userId, dungeonId)) {
+      return serviceFail('dungeon is locked', 403);
     }
 
     if (!gameRepository.consumeEnergy(userId, dungeon.energy_cost)) {
@@ -44,13 +52,14 @@ export const gameDungeonBattleService = {
       return serviceFail('user not found', 404);
     }
 
-    user.gold += dungeon.gold_reward;
-    user.exp += dungeon.exp_reward;
-
+    // Rewards are already granted by the battle system on victory
+    // This endpoint returns the reward summary
     return serviceOk({
       rewards: dungeon.rewards,
       gold: dungeon.gold_reward,
       exp: dungeon.exp_reward,
+      crystals: dungeon.crystal_reward || 0,
+      character_shards: dungeon.character_shard_reward || 0,
     });
   },
 
@@ -63,53 +72,22 @@ export const gameDungeonBattleService = {
     return serviceOk(battle);
   },
 
-  battleAction(battleId: number, unitId?: string): ServiceResult<unknown> {
-    const battle = gameRepository.getBattleById(battleId);
-    if (!battle) {
+  battleAction(battleId: number, unitId?: string, skillIndex?: number, targetIds?: string[]): ServiceResult<unknown> {
+    const result = gameRepository.battleAction(battleId, unitId, skillIndex, targetIds);
+    if (!result) {
       return serviceFail('battle not found', 404);
     }
 
-    const aliveEnemy = battle.enemies.find((enemy) => enemy.is_alive);
-    const actor = battle.allies.find((ally) => ally.unit_id === unitId) || battle.allies[0];
+    return serviceOk(result);
+  },
 
-    if (aliveEnemy && actor) {
-      const damage = Math.max(1, actor.atk - Math.floor(aliveEnemy.def * 0.35));
-      aliveEnemy.hp = Math.max(0, aliveEnemy.hp - damage);
-      aliveEnemy.is_alive = aliveEnemy.hp > 0;
-
-      battle.turn_counter += 1;
-      battle.events.unshift({
-        turn_number: battle.turn_counter,
-        actor_id: actor.unit_id,
-        actor_name: actor.name,
-        skill_name: 'Basic Attack',
-        skill_id: actor.skills[0]?.skill_id || 0,
-        event_type: 'action',
-        targets: [{
-          target_id: aliveEnemy.unit_id,
-          target_name: aliveEnemy.name,
-          damage,
-          is_crit: false,
-          is_kill: !aliveEnemy.is_alive,
-          hp_after: aliveEnemy.hp,
-        }],
-      });
-
-      if (!battle.enemies.some((enemy) => enemy.is_alive)) {
-        battle.phase = 'battle_end';
-        battle.result = {
-          battle_id: battle.battle_id,
-          result: 'victory',
-          waves_cleared: battle.total_waves,
-          gold: 1500,
-          exp: 120,
-          crystals: 10,
-        };
-      }
+  processBattleTick(battleId: number): ServiceResult<unknown> {
+    const result = gameRepository.processBattleTick(battleId);
+    if (!result) {
+      return serviceFail('battle not found', 404);
     }
 
-    gameRepository.updateBattle(battle);
-    return serviceOk(battle);
+    return serviceOk(result);
   },
 
   setBattleAuto(battleId: number, auto: boolean): ServiceResult<unknown> {
@@ -129,7 +107,7 @@ export const gameDungeonBattleService = {
       return serviceFail('battle not found', 404);
     }
 
-    battle.speed_multiplier = [1, 2, 3].includes(speed) ? speed : 1;
+    battle.speed_multiplier = [1, 2].includes(speed) ? speed : 1;
     gameRepository.updateBattle(battle);
     return serviceOk(battle);
   },

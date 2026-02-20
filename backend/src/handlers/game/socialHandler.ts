@@ -73,11 +73,11 @@ export const gameSocialHandler = {
 
   getShopHistory: (req: Request, res: Response): void => {
     const { page, limit } = getPagination(req);
-    sendResult(res, gameService.getShopHistory(page, limit));
+    sendResult(res, gameService.getShopHistory(req.userId!, page, limit));
   },
 
-  getDailyQuests: (_req: Request, res: Response): void => {
-    sendResult(res, gameService.getDailyQuests());
+  getDailyQuests: (req: Request, res: Response): void => {
+    sendResult(res, gameService.getDailyQuests(req.userId!));
   },
 
   getWeeklyQuests: (_req: Request, res: Response): void => {
@@ -96,10 +96,7 @@ export const gameSocialHandler = {
     sendResult(res, gameService.claimQuest(req.userId!, Number(req.params.id)));
   },
 
-  getDailyLogin: (_req: Request, res: Response): void => {
-    ok(res, {
-      claimed: true,
-      rewards: [{ type: 'currency', name: 'gold', quantity: 1000 }],
-    });
+  getDailyLogin: (req: Request, res: Response): void => {
+    sendResult(res, gameService.claimDailyLogin(req.userId!));
   },
 };
